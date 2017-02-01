@@ -88,6 +88,9 @@
 #include "../smpboot.h"
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
+#ifdef CONFIG_CPU_FREQ_STAT
+#include <linux/cpufreq.h>
+#endif
 
 
 
@@ -1957,6 +1960,10 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 #ifdef CONFIG_SCHEDSTATS
 	memset(&p->se.statistics, 0, sizeof(p->se.statistics));
+#endif
+
+#ifdef CONFIG_CPU_FREQ_STAT
+	cpufreq_task_stats_init(p);
 #endif
 
 	RB_CLEAR_NODE(&p->dl.rb_node);
