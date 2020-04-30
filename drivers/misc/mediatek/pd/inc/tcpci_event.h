@@ -15,8 +15,8 @@
 #ifndef TCPC_EVENT_BUF_H_INCLUDED
 #define TCPC_EVENT_BUF_H_INCLUDED
 
-#include "inc/tcpm.h"
-#include "inc/tcpci_timer.h"
+#include "tcpm.h"
+#include "tcpci_timer.h"
 
 
 #define PD_MSG_BUF_SIZE		(4*2)
