@@ -86,11 +86,6 @@ enum BQ_FLAGS {
 	BQ_STATUS_RESUMING = 0x2,
 };
 
-enum DOCK_STATE_TYPE {
-	TYPE_DOCKED = 5,
-	TYPE_UNDOCKED = 6,
-};
-
 struct battery_info {
 	struct mutex lock;
 
@@ -158,6 +153,11 @@ extern void bq24297_get_fault_type(unsigned char *type);
 
 extern unsigned long get_virtualsensor_temp(void);
 #endif /* CONFIG_AMAZON_METRICS_LOG */
+
+enum DOCK_STATE_TYPE {
+	TYPE_DOCKED = 5,
+	TYPE_UNDOCKED = 6,
+};
 
 struct battery_common_data g_bat;
 struct fg_error_detection g_fg_err_det;
@@ -2532,7 +2532,9 @@ static void battery_update(struct battery_data *bat_data)
 {
 	struct power_supply *bat_psy = &bat_data->psy;
 	bool resetBatteryMeter = false;
+#if defined(CONFIG_AMAZON_METRICS_LOG)
 	char buf[256] = {0};
+#endif
 	static int bat_status_old = POWER_SUPPLY_STATUS_UNKNOWN;
 
 	bat_data->BAT_TECHNOLOGY = POWER_SUPPLY_TECHNOLOGY_LION;
