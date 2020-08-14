@@ -11,5 +11,4 @@ obj-y   +=  tpd_init.o
 obj-y   +=  tpd_misc.o
 obj-y   +=  tpd_setting.o
 
-obj-$(CONFIG_TOUCHSCREEN_MTK_SYNAPTICS_I2C_RMI4)	+=  synaptics_i2c_rmi4/
 obj-$(CONFIG_TOUCHSCREEN_MTK_FT5726)	+=  ft5726/

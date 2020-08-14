@@ -37,20 +37,6 @@ config SHOW_TOUCH_VENDOR
           To compile this dirver as a module, choose M here: the
           module will be called.
 
-config TOUCHSCREEN_MTK_SYNAPTICS_I2C_RMI4
-	tristate "Synaptics DSX I2C touchscreen"
-	depends on I2C
-	help
-	  Say Y here if you have a Synaptics DSX I2C touchscreen
-	  connected to your system.
-
-	  If unsure, say N.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called synaptics_i2c_rmi4.
-
-source "drivers/input/touchscreen/mediatek/synaptics_i2c_rmi4/Kconfig"
-
 config TOUCHSCREEN_GESTURE_WAKEUP
 	bool "Touch Screen Gesture Wakeup support"
 	default n

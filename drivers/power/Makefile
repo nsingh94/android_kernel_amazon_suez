@@ -19,8 +19,6 @@ obj-$(CONFIG_TEST_POWER)	+= test_power.o
 
 ifeq ($(CONFIG_ARCH_MT8173),y)
 	obj-$(CONFIG_ARCH_MT8173) += mt81xx/
-else
-	obj-$(CONFIG_MTK_SMART_BATTERY) += mediatek/
 endif
 
 obj-$(CONFIG_BATTERY_88PM860X)	+= 88pm860x_battery.o

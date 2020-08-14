@@ -105,18 +105,6 @@ config ACCDET_TO_UART
 
 	  If unsure, say N.
 
-config ASUS_MT8173_ACCDET
-	depends on !MTK_ACCDET
-	tristate "Asus MT8173 Accdet driver"
-	---help---
-
-	MT8173 Accdet driver support for MediaTek SOC
-
-	If you want to use Asus MT8173 Accdet driver,
-	say Y or M here.
-
-	If unsure, say N.
-
 config ACCDET_OMTP_CTIA_SWITCH
 	tristate "MediaTek ACCDET driver"
 	---help---
