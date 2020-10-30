@@ -6,7 +6,6 @@
 #include <linux/delay.h>
 /* #include <mach/mt_gpio.h> */
 #endif
-LCM_DSI_MODE_CON lcm_dsi_mode;
 
 /* used to identify float ID PIN status */
 #define LCD_HW_ID_STATUS_LOW      0
@@ -20,70 +19,17 @@ LCM_DSI_MODE_CON lcm_dsi_mode;
 #define LCD_DEBUG(fmt, args...)  pr_debug("[KERNEL/LCM]"fmt, ##args)
 #endif
 
-extern LCM_DRIVER c805_hz_jd9365_hsd_wxga_ips_8_lcm_drv;
-extern LCM_DRIVER c805_jd9367_wxga_lcm_drv;
-extern LCM_DRIVER c710_mc_nt35521s_cpt_wxga_ips_101_lcm_drv;
-extern LCM_DRIVER c805_xy_jd9366ab_boe_wxga_ips_8_lcm_drv;
-extern LCM_DRIVER c708_pbtb080h030_lcm_drv;
-extern LCM_DRIVER c805_otm1287a_wxga_lcm_drv;
-extern LCM_DRIVER c708_yf_jd9367_inx_wxga_ips_7_lcm_drv;
-extern LCM_DRIVER c708_sx_jd9366_auo_wxga_ips_8_lcm_drv;
-extern LCM_DRIVER c708_gx_ek79007_wsvga_cpt_tn_lcm_drv;
-extern LCM_DRIVER c710_xc_nt51012_boe_wuxga_ips_101_lcm_drv;
-extern LCM_DRIVER c708_zdcd_jd9366ab_boe_wxga_ips_8_lcm_drv;
-
-extern LCM_DRIVER c805_hx_s6d7aa0x04_cpt_wxga_ips_8_lcm_drv;
-
-extern LCM_DRIVER c805_bd_jd9366_wxga_ips_lcm_drv;
-
-extern LCM_DRIVER c805_fx_S6D7AA0X01_boe_wxga_ips_8_lcm_drv;
-
-extern LCM_DRIVER c805_fx_ota7290b_boe_wuxga_ips_101_lcm_drv;
-
-extern LCM_DRIVER c71_cz_ek79007_boe_wsvganl_tn_7_lcm_drv;
-
-extern LCM_DRIVER c708_mc_jd9366_wxga_cpt_8_lcm_drv;
-
-extern LCM_DRIVER c805_zs_hx8394a01_inx_wxga_ips_8_lcm_drv;
-
-extern LCM_DRIVER c710_pb_jd9365_boe_wxga_ips_101_lcm_drv;
-
-extern LCM_DRIVER c102_qc_jd9364_inx_wxga_ips_101_lcm_drv;
-extern LCM_DRIVER c805_zs_ek79029aa_boe_wxga_ips_8_lcm_drv;
-
-extern LCM_DRIVER c805_hx_RM72010_auo_wxga_ips_8_lcm_drv;
-
-extern LCM_DRIVER c86_xy_ek79007_cpt_wvsxganl_ips_7_rgb_lcm_drv;
-
-extern LCM_DRIVER c805_jd9366_wxga_lcm_drv;
-
-extern LCM_DRIVER c805_hnh_hx8394_boe_wuxga_ips_101_lcm_drv;
-
-extern LCM_DRIVER c708_cz_ek79007_boe_wsxga_tn_7_lcm_drv;
-extern LCM_DRIVER c805_jlt_jd9364_inx_wxga_ips_101_lcm_drv;
-extern LCM_DRIVER c805_pxjt_nt35521s_inx_wxga_ips_101_lcm_drv;
-extern LCM_DRIVER c118_it6151_edp_dsi_lcm_drv;
-extern LCM_DRIVER c716_ek79007_wsvga_dsi_lcm_drv;
-extern LCM_DRIVER c716_zs18032901_dsi_wxga_lcm_drv;
-extern LCM_DRIVER c716_fx_ota7290b_boe_wuxga_ips_101_lcm_drv;
-extern LCM_DRIVER c716_fx_jd9365_boe_wxga_ips_101_lcm_drv;
-extern LCM_DRIVER c716_pb_jd9365_hsd_wxga_ips_101_lcm_drv;
-extern LCM_DRIVER c716_fy_hx8394d_boe_wxga_ips_101_lcm_drv;
-extern LCM_DRIVER c716_fx_jd9365_cpt_wxga_ips_101_lcm_drv;
-extern LCM_DRIVER amsa05bv_dsi_vdo_mt8173_lcm_drv;
-
 LCM_DRIVER *lcm_driver_list[] = {
 /**######################## MID_LCM start ###########################**/
-	&amsa05bv_dsi_vdo_mt8173_lcm_drv,
+#if defined(MTK_LCM_DEVICE_TREE_SUPPORT)
+	&lcm_common_drv,
+#else
+#if defined(NT51021_WUXGA_DSI_VDO)
+	&nt51021_wuxga_dsi_vdo_lcm_drv,
+#endif
+#endif
 /**######################## MID_LCM end #############################**/
 };
-#if defined(MTK_LCM_DEVICE_TREE_SUPPORT)
-unsigned char lcm_name_list[][128] = {
-	"rc_rgb_wsvga",
-
-};
-#endif
-
 
 #define LCM_COMPILE_ASSERT(condition) LCM_COMPILE_ASSERT_X(condition, __LINE__)
 #define LCM_COMPILE_ASSERT_X(condition, line) LCM_COMPILE_ASSERT_XX(condition, line)
