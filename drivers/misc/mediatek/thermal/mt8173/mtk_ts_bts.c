@@ -31,7 +31,7 @@
 #include "mach/mt_thermal.h"
 #include "mt-plat/mtk_thermal_platform.h"
 #include <linux/uidgid.h>
-#include <inc/tmp_bts.h>
+#include "inc/tmp_bts.h"
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/platform_data/mtk_thermal.h>
