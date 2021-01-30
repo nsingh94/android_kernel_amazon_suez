@@ -17,3 +17,4 @@ obj-$(CONFIG_MTK_BMA222E)		+= bma222e/
 obj-$(CONFIG_MTK_MC3XXX) += mc3xxx/
 obj-$(CONFIG_MTK_MC34XX) +=  mc34xx/
 obj-$(CONFIG_MTK_BMA2X2) +=  bma2x2/
+obj-$(CONFIG_MTK_BMA253)   +=  bma253/
