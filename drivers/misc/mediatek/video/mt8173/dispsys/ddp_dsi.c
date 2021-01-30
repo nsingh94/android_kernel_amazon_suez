@@ -1041,6 +1041,11 @@ void DSI_PHY_clk_setting(DISP_MODULE_ENUM module, cmdqRecHandle cmdq, LCM_DSI_PA
 
 	DISPFUNC();
 	for (i = DSI_MODULE_BEGIN(module); i <= DSI_MODULE_END(module); i++) {
+		// step 0
+		if (dsi_params->cust_clk_impendence)
+			DSI_OUTREGBIT(cmdq, MIPITX_DSI_CLOCK_LANE_REG, DSI_PHY_REG[i]->MIPITX_DSI_CLOCK_LANE,
+			      RG_DSI_LNTC_RT_CODE, dsi_params->cust_clk_impendence);
+
 		/* step 1 */
 		/* MIPITX_MASKREG32(APMIXED_BASE+0x00, (0x1<<6), 1); */
 

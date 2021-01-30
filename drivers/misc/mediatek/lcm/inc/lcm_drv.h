@@ -617,6 +617,8 @@ typedef struct {
 
 	unsigned int ext_te_edge;
 	unsigned int eint_disable;
+
+	unsigned int cust_clk_impendence;
 } LCM_DSI_PARAMS;
 
 /* --------------------------------------------------------------------------- */

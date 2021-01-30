@@ -259,6 +259,7 @@ extern LCM_DRIVER nt35595_fhd_dsi_cmd_truly_nt50358_720p_extern_lcm_drv;
 extern LCM_DRIVER nt35695_fhd_dsi_vdo_truly_nt50358_720p_lcm_drv;
 extern LCM_DRIVER ft8707_fhd_dsi_vdo_lgd_drv;
 extern LCM_DRIVER r63319_qxga_dsi_vdo_truly_lcm_drv;
+extern LCM_DRIVER nt51021_wuxga_dsi_vdo_lcm_drv;
 
 #ifdef BUILD_LK
 extern void mdelay(unsigned long msec);

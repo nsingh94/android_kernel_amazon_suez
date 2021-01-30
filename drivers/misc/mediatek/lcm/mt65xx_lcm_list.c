@@ -998,6 +998,9 @@ LCM_DRIVER *lcm_driver_list[] = {
 	&r63319_qxga_dsi_vdo_truly_lcm_drv,
 #endif
 
+#if defined(NT51021_WUXGA_DSI_VDO)
+	&nt51021_wuxga_dsi_vdo_lcm_drv,
+#endif
 };
 
 unsigned char lcm_name_list[][128] = {
