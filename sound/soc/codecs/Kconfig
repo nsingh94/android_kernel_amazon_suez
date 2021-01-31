@@ -493,6 +493,14 @@ config SND_SOC_RT286
 	tristate
 	depends on I2C
 
+config SND_SOC_RT5514
+	tristate "SND_SOC_RT5514"
+	default y if SND_SOC_RT5514_SPI=y
+
+config SND_SOC_RT5514_SPI
+	tristate "SND_SOC_RT5514_SPI"
+	depends on SPI_MASTER
+
 config SND_SOC_RT5631
 	tristate
 
