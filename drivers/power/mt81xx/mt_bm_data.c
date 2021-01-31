@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include "mt_battery_custom_data.h"
@@ -16,9 +16,19 @@
 #include <linux/of.h>
 #include <linux/device.h>
 
-#define BAT_NTC_10 1
-#define BAT_NTC_47 0
+#define BAT_NTC_10 0
+#define BAT_NTC_47 1
 #define BAT_NTC_100 0
+
+#ifdef CONFIG_IDME
+#include <misc/idme.h>
+#endif
+#ifdef CONFIG_BATTERY_DTS_SUPPORT
+#include "battery_dts_support.h"
+#endif
+#ifdef CONFIG_CUSTOM_BATTERY_CYCLE_AGING_DATA
+#include "mt_battery_data_aging_table.h"
+#endif
 
 /* ============================================================ */
 /* <DOD, Battery_Voltage> Table */
@@ -2540,28 +2550,24 @@ static struct BATT_TEMPERATURE p1v1_bat_temperature_table[] = {
 	{70, 7897}
 };
 
-static struct BATT_TEMPERATURE ariel8_bat_temperature_table[] = {
-	{-20, 70563},
-	{-15, 55255},
-	{-10, 43596},
-	{-5, 34646},
-	{0, 27725},
-	{5, 22335},
-	{10, 18107},
-	{15, 14770},
-	{20, 12119},
-	{25, 10000},		/* 10K */
-	{30, 8296},
-	{35, 6919},
-	{40, 5799},
-	{45, 4884},
-	{50, 4133},
-	{55, 3513},
-	{60, 2999},
-	{65, 2571},
-	{70, 2212},
-	{75, 1911},	
-	{80, 1658}
+static struct BATT_TEMPERATURE abc1238_bat_temperature_table[] = {
+	{-20, 68237},
+	{-15, 53650},
+	{-10, 42506},
+	{ -5, 33892},
+	{  0, 27219},
+	{  5, 22021},
+	{ 10, 17926},
+	{15, 14674},
+	{ 20, 12081},
+	{ 25, 10000},
+	{ 30, 8315},
+	{ 35, 6948},
+	{ 40, 5834},
+	{ 45, 4917},
+	{ 50, 4161},
+	{ 55, 3535},
+	{ 60, 3014}
 };
 
 void p1v1_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
@@ -2619,9 +2625,62 @@ void p1v1_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
 	p_meter_data->p_r_profile_temperature = p1v1_custom_r_profile_temperature;
 }
 
-void ariel8_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
+void suez_proto_1v0_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
 {
-	/* todo: should update ariel8 board value here */
+	#ifdef CONFIG_BATTERY_DTS_SUPPORT
+	struct device_node *np = NULL;
+
+	np = of_find_node_by_name(NULL, "battery_proto_setting");
+	if (np) {
+		pr_debug("Find battery_proto_setting\n");
+		batt_meter_init_cust_data_from_dt(np, p_meter_data);
+		of_node_put(np);
+	} else {
+		pr_err("Can't find battery_proto_setting\n");
+		return;
+	}
+	#else
+	return;
+	#endif
+}
+
+void suez_1v0_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
+{
+	#ifdef CONFIG_BATTERY_DTS_SUPPORT
+	struct device_node *np = NULL;
+	unsigned int battery_id = idme_get_battery_info(31, 4);
+
+	pr_debug("battery_id=%x\n", battery_id);
+	if (battery_id == BATTERY_ID_DSY) {
+		np = of_find_node_by_name(NULL, "battery_dsy_setting");
+		#ifdef CONFIG_CUSTOM_BATTERY_CYCLE_AGING_DATA
+		p_meter_data->battery_aging_table_saddles = ARRAY_SIZE(battery_aging_table_dsy);
+		p_meter_data->p_battery_aging_table = battery_aging_table_dsy;
+		#endif
+	} else {
+		np = of_find_node_by_name(NULL, "battery_atl_setting");
+		#ifdef CONFIG_CUSTOM_BATTERY_CYCLE_AGING_DATA
+		p_meter_data->battery_aging_table_saddles = ARRAY_SIZE(battery_aging_table_atl);
+		p_meter_data->p_battery_aging_table = battery_aging_table_atl;
+		#endif
+	}
+
+	if (np) {
+		pr_debug("Find battery profile\n");
+		batt_meter_init_cust_data_from_dt(np, p_meter_data);
+		of_node_put(np);
+	} else {
+		pr_err("Can't find battery profile\n");
+		return;
+	}
+	#else
+	return;
+	#endif
+}
+
+void abc1238_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
+{
+	/* todo: should update abc1238 board value here */
 	p_meter_data->car_tune_value = 102;
 
 	/* NTC 10K */
@@ -2637,11 +2696,11 @@ void ariel8_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_dat
 	/* set low capacity tolerance to 2% due to flat curve of low battery area */
 	p_meter_data->poweron_low_capacity_tolerance = 2;
 
-	p_meter_data->p_batt_temperature_table = ariel8_bat_temperature_table;
+	p_meter_data->p_batt_temperature_table = abc1238_bat_temperature_table;
 	p_meter_data->battery_ntc_table_saddles =
-	    sizeof(ariel8_bat_temperature_table) / sizeof(struct BATT_TEMPERATURE);
+	    sizeof(abc1238_bat_temperature_table) / sizeof(struct BATT_TEMPERATURE);
 
-	/* todo: should update ariel8 battery capacity here */
+	/* todo: should update abc1238 battery capacity here */
 	p_meter_data->q_max_pos_50 = 4000;
 	p_meter_data->q_max_pos_50_h_current = 3950;
 	p_meter_data->q_max_pos_25 = 4000;
@@ -2671,6 +2730,32 @@ void ariel8_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_dat
 	p_meter_data->p_r_profile_temperature = p1v1_custom_r_profile_temperature;
 }
 
+void suez_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
+{
+	#ifdef CONFIG_IDME
+	unsigned int board_type;
+	unsigned int board_rev;
+
+	board_type = idme_get_board_type();
+	board_rev = idme_get_board_rev();
+	pr_debug("%s:board_type:0x%x, board_rev:0x%x\n",
+			__func__, board_type, board_rev);
+	if (board_type == BOARD_TYPE_SUEZ) {
+		switch (board_rev) {
+		case BOARD_REV_PROTO_0:
+			suez_proto_1v0_custom_battery_init(p_meter_data);
+			break;
+		default:
+			suez_1v0_custom_battery_init(p_meter_data);
+		};
+	} else {
+		suez_proto_1v0_custom_battery_init(p_meter_data);
+	}
+	#else
+	suez_proto_1v0_custom_battery_init(p_meter_data);
+	#endif
+}
+
 struct mt_bm_item {
 	const char *battery_name;
 	void (*func)(struct mt_battery_meter_custom_data *p_meter_data);
@@ -2678,7 +2763,8 @@ struct mt_bm_item {
 
 static struct mt_bm_item mt_battery_profiles[] = {
 	{"p1v1_battery", p1v1_custom_battery_init},
-	{"ariel_battery", ariel8_custom_battery_init}
+	{"abc123_battery", abc1238_custom_battery_init},
+	{"suez_battery", suez_custom_battery_init},
 };
 
 int mt_bm_of_probe(struct device *dev, struct mt_battery_meter_custom_data **p_meter_data)
@@ -2699,7 +2785,7 @@ int mt_bm_of_probe(struct device *dev, struct mt_battery_meter_custom_data **p_m
 
 	for (i = 0; i < sizeof(mt_battery_profiles) / sizeof(struct mt_bm_item); i++) {
 		if (strcmp(bname, mt_battery_profiles[i].battery_name) == 0) {
-			dev_warn(dev, "match battery profile: %s\n", bname);
+			dev_dbg(dev, "match battery profile: %s\n", bname);
 			mt_battery_profiles[i].func(*p_meter_data);
 			break;
 		}

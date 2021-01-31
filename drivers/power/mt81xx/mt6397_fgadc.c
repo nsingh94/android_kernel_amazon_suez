@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include <linux/delay.h>
@@ -20,26 +20,12 @@
 #include "mt_battery_meter_hal.h"
 #include "mt_battery_custom_data.h"
 
-#ifdef CONFIG_OZ8806_SUPPORT
-#define STATUS_OK 0
-#define SOC_BY_3RD_FG
-#endif
-
-#if defined(SOC_BY_3RD_FG)
-#ifdef CONFIG_OZ8806_SUPPORT                        
-#include "o2micro_battery/parameter.h"
-#include "o2micro_battery/table.h"
-#endif
-#endif
-
 #define VOLTAGE_FULL_RANGE     1200
 #define ADC_PRECISE           1024	/* 10 bits */
 #define UNIT_FGCURRENT     (158122)	/* 158.122 uA */
 
 static s32 g_hw_ocv_tune_value = 8;	/* hwocv chip calibration value */
-#ifndef CONFIG_OZ8806_SUPPORT
 static bool g_fg_is_charging;
-#endif
 
 static struct mt_battery_meter_custom_data *bat_meter_data;
 
@@ -78,7 +64,6 @@ int get_hw_ocv(void)
 
 /* ============================================================// */
 
-#ifndef CONFIG_OZ8806_SUPPORT
 static u32 fg_get_data_ready_status(void)
 {
 	u32 ret = 0;
@@ -94,7 +79,6 @@ static u32 fg_get_data_ready_status(void)
 
 	return temp_val;
 }
-#endif
 
 static s32 fgauge_read_current(void *data);
 static s32 fgauge_initialization(void *data)
@@ -109,12 +93,6 @@ static s32 fgauge_initialization(void *data)
 	/* FGADC clock is 32768Hz from RTC */
 	/* Enable FGADC in current mode at 32768Hz with auto-calibration */
 
-#if defined(SOC_BY_3RD_FG)                  
-#ifdef CONFIG_OZ8806_SUPPORT      
-	oz8806_battery_update_data();           
-	return 0;
-#endif                                      
-#endif
 	/* (1)    Enable VA2 */
 	/* (2)    Enable FGADC clock for digital */
 	upmu_set_rg_fgadc_ana_ck_pdn(0);
@@ -146,12 +124,6 @@ static s32 fgauge_initialization(void *data)
 
 static s32 fgauge_read_current(void *data)
 {
-#if defined(SOC_BY_3RD_FG)                                                   
-#ifdef CONFIG_OZ8806_SUPPORT                                                 
-	*(signed int*)(data) = oz8806_get_battry_current() * 10; //mA * 10        
-#endif                                                                       
-	return STATUS_OK;                                                        
-#else
 	u16 uvalue16 = 0;
 	s32 dvalue = 0;
 	int m = 0;
@@ -256,21 +228,15 @@ static s32 fgauge_read_current(void *data)
 	*(s32 *) (data) = dvalue;
 
 	return 0;
-#endif
 }
 
 static s32 fgauge_read_current_sign(void *data)
 {
-#ifdef CONFIG_OZ8806_SUPPORT
-    *(bool*)(data) = 0; 
-#else
 	*(bool *) (data) = g_fg_is_charging;
-#endif
 
 	return 0;
 }
 
-#ifndef CONFIG_OZ8806_SUPPORT
 static s32 fgauge_read_columb_internal(void *data, int reset)
 {
 	u32 uvalue32_CAR = 0;
@@ -373,25 +339,14 @@ static s32 fgauge_read_columb_internal(void *data, int reset)
 
 	return 0;
 }
-#endif
 
 static s32 fgauge_read_columb(void *data)
 {
-#if defined(SOC_BY_3RD_FG)
-#ifdef CONFIG_OZ8806_SUPPORT
-	*(signed int*)(data) = oz8806_get_remaincap();
-#endif
-	return STATUS_OK;
-#else
 	return fgauge_read_columb_internal(data, 0);
-#endif
 }
 
 static s32 fgauge_hw_reset(void *data)
 {
-#if defined(SOC_BY_3RD_FG)
-    return STATUS_OK;
-#else
 	u32 val_car = 1;
 	u32 ret = 0;
 
@@ -406,49 +361,16 @@ static s32 fgauge_hw_reset(void *data)
 	pr_debug("[fgauge_hw_reset] : End \r\n");
 
 	return 0;
-#endif
 }
-
-#if defined(SOC_BY_3RD_FG)
-static signed int fgauge_get_soc(void *data)
-{
-#ifdef CONFIG_OZ8806_SUPPORT
-    *(signed int*)(data) = oz8806_get_soc();
-#endif
-    return STATUS_OK;
-}
-static signed int fgauge_set_temp(void *data)
-{
-#ifdef CONFIG_OZ8806_SUPPORT
-    //return STATUS_UNSUPPORTED;
-    return STATUS_OK;
-#endif
-    return STATUS_OK;
-}
-#ifdef CONFIG_OZ8806_SUPPORT
-static signed int fgauge_get_temp(void *data)
-{
-    //*(signed int*)(data) = oz8806_get_simulated_temp();
-    *(signed int*)(data) = oz8806_get_battery_temp();
-
-    return STATUS_OK;
-}
-#endif
-#endif
-
-
 
 static s32 read_adc_v_bat_sense(void *data)
 {
 #if defined(CONFIG_POWER_EXT)
 	*(s32 *) (data) = 4201;
-#elif defined(CONFIG_OZ8806_SUPPORT)
-    *(signed int*)(data) = oz8806_get_battery_voltage();
 #else
 	*(s32 *) (data) =
 	    PMIC_IMM_GetOneChannelValue(bat_meter_data->vbat_channel_number, *(s32 *) (data), 1);
 #endif
-	printk("%s", __FUNCTION__);
 
 	return 0;
 }
@@ -458,7 +380,6 @@ static s32 read_adc_v_i_sense(void *data)
 #if defined(CONFIG_POWER_EXT)
 	*(s32 *) (data) = 4202;
 #else
-	printk("%s", __FUNCTION__);
 	*(s32 *) (data) =
 	    PMIC_IMM_GetOneChannelValue(bat_meter_data->isense_channel_number, *(s32 *) (data), 1);
 #endif
@@ -471,12 +392,10 @@ static s32 read_adc_v_bat_temp(void *data)
 #if defined(CONFIG_POWER_EXT)
 	*(s32 *) (data) = 0;
 #else
-	printk("%s", __FUNCTION__);
 	pr_debug("[read_adc_v_bat_temp] return PMIC_IMM_GetOneChannelValue(4,times,1);\n");
 	*(s32 *) (data) =
 	    PMIC_IMM_GetOneChannelValue(bat_meter_data->vbattemp_channel_number, *(s32 *) (data),
 					1);
-	printk("robin says: %d\n", *((int *)data));
 #endif
 
 	return 0;
@@ -489,7 +408,6 @@ static s32 read_adc_v_charger(void *data)
 #else
 	s32 val;
 
-	printk("%s", __FUNCTION__);
 	val =
 	    PMIC_IMM_GetOneChannelValue(bat_meter_data->vcharger_channel_number, *(s32 *) (data),
 					1);
@@ -508,13 +426,11 @@ static s32 read_hw_ocv(void *data)
 #else
 	*(s32 *) (data) = get_hw_ocv();
 #endif
-	printk("%s", __FUNCTION__);
 	return 0;
 }
 
 static s32 dump_register_fgadc(void *data)
 {
-	printk("%s", __FUNCTION__);
 	return 0;
 }
 
@@ -526,13 +442,7 @@ fgauge_initialization,
 	    fgauge_hw_reset,
 	    read_adc_v_bat_sense,
 	    read_adc_v_i_sense,
-	    read_adc_v_bat_temp, read_adc_v_charger, read_hw_ocv, dump_register_fgadc
-#if defined(CONFIG_OZ8806_SUPPORT)
-		,fgauge_get_soc,
-		fgauge_set_temp,
-		fgauge_get_temp
-#endif	
-	};
+	    read_adc_v_bat_temp, read_adc_v_charger, read_hw_ocv, dump_register_fgadc};
 
 s32 bm_ctrl_cmd(int cmd, void *data)
 {

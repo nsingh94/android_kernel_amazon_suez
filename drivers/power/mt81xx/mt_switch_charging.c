@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 
@@ -50,6 +50,8 @@ int g_temp_input_CC_value = CHARGE_CURRENT_0_00_MA;
 u32 g_usb_state = USB_UNCONFIGURED;
 static u32 full_check_count;
 
+int cust_input_current_limit = -1;
+
 #if defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
 struct wake_lock TA_charger_suspend_lock;
 bool ta_check_chr_type = true;
@@ -66,10 +68,6 @@ static DEFINE_MUTEX(ta_mutex);
 int g_temp_status = TEMP_POS_10_TO_POS_45;
 bool temp_error_recovery_chr_flag = true;
 bool trickle_charge_stage = false;
-#endif
-
-#if defined(CONFIG_TCPC_RT1711)
- __attribute__ ((weak)) int mt_pep_custom_hv(bool enable) { return 0; }
 #endif
 
  /* ============================================================ // */
@@ -118,11 +116,6 @@ static void set_ta_charging_current(void)
 		g_temp_input_CC_value = p_bat_charging_data->ta_ac_7v_input_current;	/* TA = 7V */
 		g_temp_CC_value = p_bat_charging_data->ta_ac_charging_current;
 	}
-   if (BMT_status.temperature >0&&BMT_status.temperature<=15)
-   	{
-   	    g_temp_CC_value = 180000;
-   	}
-	
 }
 
 static void mtk_ta_reset_vchr(void)
@@ -136,9 +129,6 @@ static void mtk_ta_reset_vchr(void)
 static void mtk_ta_increase(void)
 {
 	if (ta_cable_out_occur == false) {
-#if defined(CONFIG_TCPC_RT1711)
-		mt_pep_custom_hv(true);
-#endif
 		bat_charger_set_ta_pattern(true);
 	} else {
 		ta_check_chr_type = true;
@@ -220,7 +210,7 @@ static void mtk_ta_init(void)
 static void battery_pump_express_charger_check(void)
 {
 	if (true == ta_check_chr_type &&
-	    (STANDARD_CHARGER == BMT_status.charger_type ||NONSTANDARD_CHARGER == BMT_status.charger_type)&&
+	    STANDARD_CHARGER == BMT_status.charger_type &&
 	    BMT_status.SOC >= p_bat_charging_data->ta_start_battery_soc &&
 	    BMT_status.SOC < p_bat_charging_data->ta_stop_battery_soc) {
 
@@ -310,7 +300,16 @@ static int select_jeita_cv(void)
 		cv_voltage = BATTERY_VOLT_04_200000_V;
 
 	if (g_temp_status == TEMP_POS_0_TO_POS_10 && trickle_charge_stage == true)
-		cv_voltage = BATTERY_VOLT_04_200000_V;
+		cv_voltage = 4352000;
+
+	if (g_custom_charging_cv != -1)
+		cv_voltage = g_custom_charging_cv;
+
+	if (g_custom_charging_mode) /* For demo unit */
+		cv_voltage = BATTERY_VOLT_04_096000_V;
+
+	pr_info("[%s] CV(%d) custom CV(%d)\r\n",
+			__func__, cv_voltage, g_custom_charging_cv);
 
 	return cv_voltage;
 }
@@ -414,9 +413,17 @@ int do_jeita_state_machine(void)
 	}
 
 	/* set CV after temperature changed */
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+	if ((g_temp_status != previous_g_temp_status)
+		|| (BMT_status.cv_voltage_changed == true)) {
+#else
 	if (g_temp_status != previous_g_temp_status) {
+#endif
 		cv_voltage = select_jeita_cv();
 		bat_charger_set_cv_voltage(cv_voltage);
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+		BMT_status.cv_voltage_changed = false;
+#endif
 	}
 
 	return PMU_STATUS_OK;
@@ -436,21 +443,28 @@ static void set_jeita_charging_current(void)
 		battery_log(BAT_LOG_CRTI, "[BATTERY] JEITA set charging current : %d\r\n",
 			    g_temp_CC_value);
 	} else if (g_temp_status == TEMP_POS_0_TO_POS_10) {
-		g_temp_CC_value = 51200;
+		g_temp_CC_value = 102400;
 		if (trickle_charge_stage == true)
-			g_temp_CC_value = 25600;
+			g_temp_CC_value = 57600;
 	} else if (g_temp_status == TEMP_POS_10_TO_POS_45) {
+		/*
 		if (BMT_status.temperature <= 23)
 			g_temp_CC_value = 153600;
 		else
 			g_temp_CC_value = 211200;
+		*/
+		g_temp_CC_value = 179200;
 	} else {
-		g_temp_CC_value = 153600;
+		g_temp_CC_value = 179200;
 	}
 }
 
 #endif
 
+int get_bat_charging_current_limit(void)
+{
+	return ((g_bcct_flag) ? g_bcct_value : CHARGE_CURRENT_MAX - 1) / 100;
+}
 
 void select_charging_curret_bcct(void)
 {
@@ -501,6 +515,16 @@ void select_charging_curret_bcct(void)
 	}
 }
 
+int set_bat_input_current_limit(int input_current_limit)
+{
+	pr_debug("%s:input current limit %d\n",
+		__func__, input_current_limit);
+	if (input_current_limit > 0)
+		cust_input_current_limit = input_current_limit*100;
+	else
+		cust_input_current_limit = -1;
+	return cust_input_current_limit;
+}
 
 u32 set_bat_charging_current_limit(int current_limit)
 {
@@ -597,10 +621,13 @@ void select_charging_curret(void)
 		} else if (BMT_status.charger_type == TYPEC_3A_CHARGER) {
 			g_temp_input_CC_value = 280000;
 			g_temp_CC_value = p_bat_charging_data->ac_charger_current;
-		} else if (BMT_status.charger_type == TYPEC_PD_CHARGER ||
-			BMT_status.charger_type == TYPEC_PD_5V_CHARGER ||
-			BMT_status.charger_type == TYPEC_PD_9V_CHARGER ||
-			BMT_status.charger_type == TYPEC_PD_12V_CHARGER) {
+		} else if (BMT_status.charger_type == TYPEC_PD_5V_CHARGER) {
+			if (mt_usb_pd_get_current())
+				g_temp_input_CC_value = mt_usb_pd_get_current() * 100;
+			else
+				g_temp_input_CC_value = 150000;
+			g_temp_CC_value = p_bat_charging_data->ac_charger_current;
+		} else if (BMT_status.charger_type == TYPEC_PD_12V_CHARGER) {
 			if (mt_usb_pd_get_current())
 				g_temp_input_CC_value = mt_usb_pd_get_current() * 100;
 			else
@@ -672,6 +699,11 @@ static void pchr_turn_on_charging(void)
 				g_temp_CC_value = g_bcct_value;
 
 			battery_log(BAT_LOG_FULL, "[BATTERY] select_charging_curret_bcct !\n");
+		}
+		if (cust_input_current_limit > 0) {
+			g_temp_input_CC_value = cust_input_current_limit;
+			battery_log(BAT_LOG_FULL, "[BATTERY] select cust_inpu_current_limit %d\n",
+				cust_input_current_limit);
 		}
 
 		if (g_temp_CC_value == CHARGE_CURRENT_0_00_MA
@@ -750,6 +782,15 @@ int BAT_ConstantCurrentModeAction(void)
 
 	if (charging_full_check() == true) {
 
+#ifdef CONFIG_HIGH_BATTERY_VOLTAGE_SUPPORT
+		/* don't go bat-ful state if device is under charging time protection */
+		/* this avoids SOC to be reset to 100% due to bat-ful state */
+		if (g_custom_charging_cv == BATTERY_VOLT_04_096000_V) {
+			g_custom_fake_full = 1;
+			return PMU_STATUS_OK;
+		}
+#endif
+
 #if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT)
 		if (g_temp_status == TEMP_POS_0_TO_POS_10) {
 			if (trickle_charge_stage == false) {
@@ -792,6 +833,9 @@ int BAT_BatteryFullAction(void)
 			BMT_status.bat_in_recharging_state = false;
 			BMT_status.bat_charging_state = CHR_CC;
 			BMT_status.bat_full = false;
+			#ifdef CONFIG_HIGH_BATTERY_VOLTAGE_SUPPORT
+			g_custom_fake_full = -1;
+			#endif
 			return PMU_STATUS_OK;
 		}
 
@@ -868,9 +912,11 @@ int BAT_BatteryStatusFailAction(void)
 	return PMU_STATUS_OK;
 }
 
-
+#define DUMP_REG_RESET_COUNTER 60
 void mt_battery_charging_algorithm(void)
 {
+	static int reg_dump_cnt = 1;
+
 	bat_charger_reset_watchdog_timer();
 
 #if defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
@@ -902,6 +948,9 @@ void mt_battery_charging_algorithm(void)
 		break;
 	}
 
-	bat_charger_dump_register();
+	if (((reg_dump_cnt++) % DUMP_REG_RESET_COUNTER) == 0) {
+		reg_dump_cnt = 1;
+		bat_charger_dump_register();
+	}
 }
 

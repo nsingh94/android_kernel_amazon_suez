@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef CHARGING_H
@@ -20,8 +20,8 @@
 
 #define battery_log(num, fmt, args...) \
 	do { \
-		if (1) { \
-			pr_err(fmt, ##args);\
+		if (Enable_BATDRV_LOG >= (int)num) { \
+			pr_warn(fmt, ##args);\
 		} \
 	} while (0)
 
@@ -62,9 +62,7 @@ enum CHARGER_TYPE {
 	APPLE_0_5A_CHARGER,	/* 0.5A apple charger */
 	TYPEC_1_5A_CHARGER, /* TypeC 5V1.5A charger */
 	TYPEC_3A_CHARGER, /*TypeC 5V3A charger */
-	TYPEC_PD_CHARGER, /* PD generic charger */
 	TYPEC_PD_5V_CHARGER, /* PD 5V charger */
-	TYPEC_PD_9V_CHARGER, /* PD 9V charger */
 	TYPEC_PD_12V_CHARGER, /* PD 12V charger */
 };
 
@@ -231,6 +229,7 @@ enum BATTERY_VOLTAGE_ENUM {
 	BATTERY_VOLT_04_075000_V = 4075000,
 	BATTERY_VOLT_04_080000_V = 4080000,
 	BATTERY_VOLT_04_087500_V = 4087500,
+	BATTERY_VOLT_04_096000_V = 4096000,
 	BATTERY_VOLT_04_100000_V = 4100000,
 	BATTERY_VOLT_04_112500_V = 4112500,
 	BATTERY_VOLT_04_115000_V = 4115000,

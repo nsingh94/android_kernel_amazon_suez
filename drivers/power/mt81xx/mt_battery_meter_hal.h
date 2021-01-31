@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef _BATTERY_METER_HAL_H
@@ -26,11 +26,6 @@ enum BATTERY_METER_CTRL_CMD {
 	BATTERY_METER_CMD_GET_ADC_V_CHARGER,
 	BATTERY_METER_CMD_GET_HW_OCV,
 	BATTERY_METER_CMD_DUMP_REGISTER,
-#ifdef CONFIG_OZ8806_SUPPORT
-	BATTERY_METER_CMD_GET_SOC,
-	BATTERY_METER_CMD_SET_TEMP,
-	BATTERY_METER_CMD_GET_TEMP,
-#endif
 	BATTERY_METER_CMD_NUMBER
 };
 

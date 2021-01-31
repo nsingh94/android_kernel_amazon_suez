@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include <linux/interrupt.h>
@@ -31,6 +31,7 @@
 #include <mt-plat/upmu_common.h>
 #include <mt-plat/mt_reboot.h>
 #include <mt-plat/mt_boot.h>
+#include "mt_battery_common.h"
 
 
 /**********************************************************
@@ -52,6 +53,7 @@
   *   [Global Variable]
   *
   *********************************************************/
+static int prev_charger_type = CHARGER_UNKNOWN;
 
 static struct i2c_client *new_client;
 static struct switch_dev bq24297_reg09;
@@ -73,7 +75,9 @@ static const u32 VBAT_CV_VTH[] = {
 	4016000, 4032000, 4048000, 4064000,
 	4080000, 4096000, 4112000, 4128000,
 	4144000, 4160000, 4176000, 4192000,
-	4208000, 4224000, 4240000, 4256000
+	4208000, 4224000, 4240000, 4256000,
+	4272000, 4288000, 4304000, 4320000,
+	4336000, 4352000, 4368000,
 };
 
 static const u32 CS_VTH[] = {
@@ -629,7 +633,7 @@ static u32 charging_hw_init(void *data)
 	upmu_set_rg_bc11_rst(1);	/* BC11_RST */
 
 	bq24297_set_en_hiz(0x0);
-	bq24297_set_vindpm(0x9);	/* VIN DPM check 4.60V */
+	bq24297_set_vindpm(0x9);
 	bq24297_set_reg_rst(0x0);
 	bq24297_set_wdt_rst(0x1);	/* Kick watchdog */
 	bq24297_set_sys_min(0x5);	/* Minimum system voltage 3.5V */
@@ -638,7 +642,15 @@ static u32 charging_hw_init(void *data)
 #else
 	bq24297_set_iprechg(0x3);	/* Precharge current 512mA */
 #endif
-	bq24297_set_iterm(0x0);	/* Termination current 128mA */
+	bq24297_set_iterm(0x1);		/* Termination current 256mA */
+
+#if !defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT)
+	#ifdef ARCH_MTK_PROJECT_SUEZ
+	bq24297_set_vreg(0x35);		/* VREG 4.352V */
+	#else
+	bq24297_set_vreg(0x2C);	/* VREG 4.208V */
+	#endif
+#endif
 	bq24297_set_batlowv(0x1);	/* BATLOWV 3.0V */
 	bq24297_set_vrechg(0x0);	/* VRECHG 0.1V (4.108V) */
 	bq24297_set_en_term(0x1);	/* Enable termination */
@@ -646,6 +658,19 @@ static u32 charging_hw_init(void *data)
 	bq24297_set_watchdog(0x1);	/* WDT 40s */
 #if !defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT)
 	bq24297_set_en_timer(0x0);	/* Disable charge timer */
+#else
+	bq24297_set_tmr2x_en(0);
+	if (BMT_status.charger_type != prev_charger_type) {
+		bq24297_set_en_timer(0x0);
+		if (BMT_status.charger_type == STANDARD_HOST ||
+			BMT_status.charger_type == NONSTANDARD_CHARGER) {
+			bq24297_set_chg_timer(0x3);
+		} else {
+			bq24297_set_chg_timer(0x2);
+		}
+		prev_charger_type = BMT_status.charger_type;
+	}
+	bq24297_set_en_timer(0x1);
 #endif
 	bq24297_set_int_mask(0x1);	/* Disable CHRG fault interrupt */
 
@@ -1080,8 +1105,7 @@ void bq24297_dump_register(void)
 
 	for (i = 0; i < bq24297_REG_NUM; i++) {
 		bq24297_read_byte(i, &bq24297_reg[i]);
-		battery_log(BAT_LOG_FULL,
-			    "[bq24297_dump_register] Reg[0x%X]=0x%X\n", i, bq24297_reg[i]);
+		pr_info("[%s] Reg[0x%X]=0x%X\n", __func__, i, bq24297_reg[i]);
 	}
 }
 
@@ -1113,6 +1137,12 @@ u8 bq24297_get_reg9_fault_type(u8 reg9_fault)
 	}
 	return ret;
 }
+
+void bq24297_get_fault_type(u8 *type)
+{
+	*type = bq24297_get_reg9_fault_type(bq24297_reg[bq24297_CON9]);
+}
+EXPORT_SYMBOL(bq24297_get_fault_type);
 
 void bq24297_polling_reg09(void)
 {

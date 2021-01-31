@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef BATTERY_COMMON_H
@@ -22,13 +22,13 @@
  *  BATTERY VOLTAGE
  ****************************************************************************/
 #define PRE_CHARGE_VOLTAGE                  3200
-#define SYSTEM_OFF_VOLTAGE                  3550
+#define SYSTEM_OFF_VOLTAGE                  3400
 #define CONSTANT_CURRENT_CHARGE_VOLTAGE     4100
 #define CONSTANT_VOLTAGE_CHARGE_VOLTAGE     4200
 #define CV_DROPDOWN_VOLTAGE                 4000
 #define CHARGER_THRESH_HOLD                 4300
 #define BATTERY_UVLO_VOLTAGE                2700
-#define CONFIG_BAT_LOW_TEMP_PROTECT_ENABLE
+
 /*****************************************************************************
  *  BATTERY TIMER
  ****************************************************************************/
@@ -94,8 +94,13 @@ struct PMU_ChargerStruct {
 	s32 bat_charging_state;
 	u32 bat_vol;
 	bool bat_in_recharging_state;
+	u32 recharge_cnt;
 	u32 Vsense;
 	bool charger_exist;
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+	bool cv_voltage_changed;
+#endif
+	u32 charger_plugin_cnt;
 	u32 charger_vol;
 	s32 charger_protect_status;
 	s32 ICharging;
@@ -128,6 +133,28 @@ struct battery_common_data {
 	CHARGING_CONTROL charger;
 };
 
+struct fg_init_condition {
+	int dod0;
+	int dod1;
+	int soc;
+	int ui_soc;
+	int hw_ocv_init;
+	int hw_soc_init;
+	int sw_soc_init;
+	int rtc_soc_init;
+	int boot_reason;
+	int soc_gap;
+	long time_gap;
+};
+
+struct fg_error_detection {
+	bool is_detected;
+	struct timespec last_full_ts;
+	struct timespec detected_ts;
+	struct fg_init_condition data;
+};
+
+
 /*****************************************************************************
  *  Extern Variable
  ****************************************************************************/
@@ -143,6 +170,13 @@ extern bool g_charging_full_reset_bat_meter;
 extern struct mt_battery_charging_custom_data *p_bat_charging_data;
 extern int g_platform_boot_mode;
 extern s32 g_custom_charging_current;
+extern signed int g_custom_charging_cv;
+extern signed int g_custom_fake_full;
+extern unsigned int g_custom_charging_mode;
+
+extern int get_bat_charging_current_limit(void);
+extern unsigned int set_bat_charging_current_limit(int current_limit);
+
 #if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT)
 extern int g_temp_status;
 #endif
@@ -155,6 +189,11 @@ extern bool ta_cable_out_occur;
 extern bool is_ta_connect;
 extern bool ta_vchr_tuning;
 extern int ta_v_chr_org;
+#endif
+
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+extern s32 gFG_CV_Battery_Voltage;
+extern s32 gFG_CV_Voltage_Reduction_Supported;
 #endif
 
 static inline int get_bat_average_voltage(void)
@@ -227,20 +266,11 @@ static inline int bat_charger_get_charger_type(void)
 	int chr_type = CHARGER_UNKNOWN;
 
 	if (g_bat.usb_connect_ready && g_bat.charger)
-		{
-		printk("xuchen usb_connect_ready!!!\n");
-
 		g_bat.charger(CHARGING_CMD_GET_CHARGER_TYPE, &chr_type);
-		}
-	else {
-		printk("xuchen usb_connect_no   ready  %d!!!\n",g_bat.usb_connect_ready);
-#if defined(CONFIG_POWER_EXT)
-		chr_type = STANDARD_HOST;
+
+#if defined(CONFIG_POWER_EXT) && defined(NO_EXTERNAL_CHARGER)
+	chr_type = STANDARD_HOST;
 #endif
-	}
-
-	      printk("xuchen bat_charger_get_charger_type = %d\n",chr_type);
-
 	return chr_type;
 }
 
@@ -300,10 +330,7 @@ static inline bool bat_charger_get_detect_status(void)
 	bool chr_status = false;
 
 	if (g_bat.charger)
-		{
 		g_bat.charger(CHARGING_CMD_GET_CHARGER_DET_STATUS, &chr_status);
-		}
-		printk("xuchen chr_status = %d\n",chr_status);
 
 	return chr_status != 0;
 }
@@ -357,6 +384,7 @@ extern u32 bat_get_ui_percentage(void);
 extern u32 get_charging_setting_current(void);
 extern u32 bat_is_recharging_phase(void);
 extern u32 set_bat_charging_current_limit(int limit);
+extern int set_bat_input_current_limit(int input_current_limit);
 
 extern void mt_power_off(void);
 extern bool mt_usb_is_device(void);
@@ -370,7 +398,6 @@ extern bool mt_usb_is_device(void);
 #if defined(CONFIG_USB_MTK_HDRC) || defined(CONFIG_SSUSB_DRV)
 extern void mt_usb_connect(void);
 extern void mt_usb_disconnect(void);
-extern void ssusb_mode_switch_typec(int to_host);
 #else
 #define mt_usb_connect() do { } while (0)
 #define mt_usb_disconnect() do { } while (0)
@@ -389,6 +416,10 @@ extern int do_jeita_state_machine(void);
 #define wake_up_bat()			do {} while (0)
 #define BAT_Get_Battery_Voltage(polling_mode)	({ 0; })
 
+#endif
+
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+extern void init_jeita_cv_voltage_from_sysfs(void);
 #endif
 
 #endif				/* #ifndef BATTERY_COMMON_H */

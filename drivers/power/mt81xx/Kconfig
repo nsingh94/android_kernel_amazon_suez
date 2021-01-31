@@ -211,3 +211,16 @@ config MTK_PUMP_EXPRESS_PLUS_SUPPORT
 	  enable this config to support high voltage charging
 	  available vbus input includes 7V/9V/12V
 	  the feature applies to standard charger with pump express plus support
+
+config MTK_BATTERY_CVR_SUPPORT
+	bool "Battery CVR Support"
+	default n
+	help
+	   yes : Support Battery CVR feature
+	   no : Not Support Battery CVR feature
+
+config BATTERY_DTS_SUPPORT
+	bool "Support parsing from device tree"
+	default n
+
+
