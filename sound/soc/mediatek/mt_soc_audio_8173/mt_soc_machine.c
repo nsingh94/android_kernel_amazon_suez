@@ -17,9 +17,42 @@
 #include <linux/module.h>
 #include <sound/soc.h>
 
+#ifdef CONFIG_SND_SOC_RT551X
+#include "../../codecs/rt551x.h"
+
+static int mt8173_rt551x_hw_params(struct snd_pcm_substream *substream,
+					struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	int ret;
+
+	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S |
+				SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS);
+	if (ret)
+		return ret;
+
+	ret = snd_soc_dai_set_sysclk(codec_dai, RT551X_SCLK_S_MCLK,
+				params_rate(params) * 256, SND_SOC_CLOCK_IN);
+	if (ret)
+		return ret;
+	return 0;
+}
+
+static struct snd_soc_ops mt8173_rt551x_ops = {
+	.hw_params = mt8173_rt551x_hw_params,
+};
+
+static struct snd_soc_dai_link_component mt8173_rt551x_codecs[] = {
+	{
+		.dai_name = "rt551x-aif1",
+	},
+};
+
+#endif
 
 /* Digital audio interface glue - connects codec <---> CPU */
-static struct snd_soc_dai_link mt8173_evb_dais[] = {
+static struct snd_soc_dai_link mt8173_dais[] = {
 	/* FrontEnd DAI Links */
 	{
 	 .name = "MultiMedia1",
@@ -117,7 +150,7 @@ static struct snd_soc_dai_link mt8173_evb_dais[] = {
 	 .codec_name = "mt6397-codec",
 	 .codec_dai_name = "mt6397-codec-tx-dai",
 	 },
-	{
+	 {
 	 .name = "PLATOFRM_CONTROL",
 	 .stream_name = MT_SOC_ROUTING_STREAM_NAME,
 	 .cpu_dai_name = "snd-soc-dummy-dai",
@@ -127,46 +160,66 @@ static struct snd_soc_dai_link mt8173_evb_dais[] = {
 	 .no_pcm = 1,
 	 },
 };
+#ifdef CONFIG_SND_SOC_RT551X
+static struct snd_soc_dai_link mt8173_rt551x_dsp_dais[] = {
+	{
+	.name = "RT551X DSP",
+	.stream_name = "DSP_Capture",
+	.cpu_dai_name = "spi32766.0",
+	.platform_name = "spi32766.0",
+	.codec_name = "snd-soc-dummy",
+	.codec_dai_name = "snd-soc-dummy-dai",
+	},
+};
 
-static int mt8173_evb_channel_cap_set(struct snd_kcontrol *kcontrol,
+static struct snd_soc_dai_link
+		mt8173_rt551x_dais[ARRAY_SIZE(mt8173_dais)
+		+ ARRAY_SIZE(mt8173_rt551x_dsp_dais)];
+#endif
+
+static int mt8173_channel_cap_set(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
 	return 0;
 }
 
-static int mt8173_evb_channel_cap_get(struct snd_kcontrol *kcontrol,
+static int mt8173_channel_cap_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
 	ucontrol->value.integer.value[0] = mt_afe_get_board_channel_type();
 	return 0;
 }
 
-static const char *const mt8173_evb_channel_cap[] = {
+static const char *const mt8173_channel_cap[] = {
 	"Stereo", "MonoLeft", "MonoRight"
 };
 
-static const struct soc_enum mt8173_evb_control_enum[] = {
-	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(mt8173_evb_channel_cap), mt8173_evb_channel_cap),
+static const struct soc_enum mt8173_control_enum[] = {
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(mt8173_channel_cap), mt8173_channel_cap),
 };
 
-static const struct snd_kcontrol_new mt8173_evb_controls[] = {
-	SOC_ENUM_EXT("Board Channel Config", mt8173_evb_control_enum[0],
-		     mt8173_evb_channel_cap_get,
-		     mt8173_evb_channel_cap_set),
+static const struct snd_kcontrol_new mt8173_controls[] = {
+	SOC_ENUM_EXT("Board Channel Config", mt8173_control_enum[0],
+		     mt8173_channel_cap_get,
+		     mt8173_channel_cap_set),
 };
 
-static struct snd_soc_card mt8173_evb_card = {
+static struct snd_soc_card mt8173_card = {
 	.name = "mt-snd-card",
-	.dai_link = mt8173_evb_dais,
-	.num_links = ARRAY_SIZE(mt8173_evb_dais),
-	.controls = mt8173_evb_controls,
-	.num_controls = ARRAY_SIZE(mt8173_evb_controls),
+	.dai_link = mt8173_dais,
+	.num_links = ARRAY_SIZE(mt8173_dais),
+	.controls = mt8173_controls,
+	.num_controls = ARRAY_SIZE(mt8173_controls),
 };
 
-static int mt8173_evb_dev_probe(struct platform_device *pdev)
+static int mt8173_dev_probe(struct platform_device *pdev)
 {
-	struct snd_soc_card *card = &mt8173_evb_card;
+	struct snd_soc_card *card = &mt8173_card;
 	struct device *dev = &pdev->dev;
+#ifdef CONFIG_SND_SOC_RT551X
+	const char *rt551x_dai_name = "";
+	int found = 0;
+#endif
 	int ret;
 
 	pr_debug("%s dev name %s\n", __func__, dev_name(dev));
@@ -176,6 +229,30 @@ static int mt8173_evb_dev_probe(struct platform_device *pdev)
 		pr_debug("%s set dev name %s\n", __func__, dev_name(dev));
 	}
 
+#ifdef CONFIG_SND_SOC_RT551X
+	ret = snd_soc_of_get_dai_name(pdev->dev.of_node, &rt551x_dai_name);
+	if (ret < 0)
+		pr_err("%s snd_soc_of_get_dai_name fail %d\n", __func__, ret);
+	else
+		found = 1;
+	if (found) {
+		mt8173_dais[5].codec_name = NULL;
+		mt8173_dais[5].codec_dai_name = NULL;
+		mt8173_rt551x_codecs[0].of_node =
+			of_parse_phandle(pdev->dev.of_node, "sound-dai", 0);
+		mt8173_dais[5].codecs = mt8173_rt551x_codecs;
+		mt8173_dais[5].num_codecs = 1;
+		mt8173_dais[5].ops = &mt8173_rt551x_ops;
+		memcpy(mt8173_rt551x_dais,
+				mt8173_dais, sizeof(mt8173_dais));
+		memcpy((mt8173_rt551x_dais + ARRAY_SIZE(mt8173_dais)),
+				mt8173_rt551x_dsp_dais,
+				sizeof(mt8173_rt551x_dsp_dais));
+		mt8173_card.dai_link = mt8173_rt551x_dais;
+		mt8173_card.num_links =
+				ARRAY_SIZE(mt8173_rt551x_dais);
+	}
+#endif
 	card->dev = dev;
 
 	ret = snd_soc_register_card(card);
@@ -196,7 +273,7 @@ static int mt8173_evb_dev_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mt8173_evb_dev_remove(struct platform_device *pdev)
+static int mt8173_dev_remove(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
 
@@ -209,29 +286,29 @@ static int mt8173_evb_dev_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id mt8173_evb_machine_dt_match[] = {
+static const struct of_device_id mt8173_machine_dt_match[] = {
 	{.compatible = "mediatek," MT_SOC_MACHINE_NAME,},
 	{}
 };
 
-MODULE_DEVICE_TABLE(of, mt8173_evb_machine_dt_match);
+MODULE_DEVICE_TABLE(of, mt8173_machine_dt_match);
 
-static struct platform_driver mt8173_evb_machine_driver = {
+static struct platform_driver mt8173_machine_driver = {
 	.driver = {
 		   .name = MT_SOC_MACHINE_NAME,
 		   .owner = THIS_MODULE,
-		   .of_match_table = mt8173_evb_machine_dt_match,
+		   .of_match_table = mt8173_machine_dt_match,
 #ifdef CONFIG_PM
 		   .pm = &snd_soc_pm_ops,
 #endif
 		   },
-	.probe = mt8173_evb_dev_probe,
-	.remove = mt8173_evb_dev_remove,
+	.probe = mt8173_dev_probe,
+	.remove = mt8173_dev_remove,
 };
 
-module_platform_driver(mt8173_evb_machine_driver);
+module_platform_driver(mt8173_machine_driver);
 
 /* Module information */
-MODULE_DESCRIPTION("ASoC driver for MT8173 EVB");
+MODULE_DESCRIPTION("ASoC driver for MT8173 SUEZ");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:mt-snd-card");

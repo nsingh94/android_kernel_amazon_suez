@@ -108,6 +108,19 @@ config SND_SOC_MT8173_MT6391_ARIEL_MACH
         It depends on ARCH_MT8173.
         Select Y to include related drivers.
 
+config SND_SOC_MT8173_MT6391_SUEZ_MACH
+    tristate "ASoC Audio driver for MT8173 Suez board"
+    depends on ARCH_MT8173 && I2C
+    select SND_SOC_MT8173
+    select SND_SOC_MT6391
+    select SND_SOC_RT551X_SPI
+    select SND_SOC_RT551X
+    help
+        This adds audio driver for MT8173 Suez board
+        with the MT6391 audio codec.
+        It depends on ARCH_MT8173.
+        Select Y to include related drivers.
+
 config MT_SND_SOC_2701
 	tristate
 
