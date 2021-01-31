@@ -18,30 +18,4 @@ ifeq ($(CONFIG_MTK_BQ24297_SUPPORT),y)
     obj-$(CONFIG_MTK_SMART_BATTERY) += bq24297.o
 endif
 
-ifeq ($(CONFIG_MTK_BQ24296_SUPPORT),y)
-    obj-$(CONFIG_MTK_SMART_BATTERY) += bq24297.o
-endif
-
-ifeq ($(CONFIG_MTK_BQ24196_SUPPORT),y)
-    obj-$(CONFIG_MTK_SMART_BATTERY) += bq24196.o
-endif
-
-ifeq ($(CONFIG_MTK_BQ24261_SUPPORT),y)
-    obj-$(CONFIG_MTK_SMART_BATTERY) += bq24261.o
-endif
-
-ifeq ($(CONFIG_MTK_BQ25890_SUPPORT),y)
-    obj-$(CONFIG_MTK_SMART_BATTERY) += bq25890.o
-endif
-
-ifeq ($(CONFIG_MTK_BQ25896_SUPPORT),y)
-    obj-$(CONFIG_MTK_SMART_BATTERY) += bq25890.o
-endif
-
 obj-$(CONFIG_MTK_PMIC) += mt6397_fgadc.o
-
-ifeq ($(CONFIG_CHARGER_SMB1351), y)
-    obj-$(CONFIG_CHARGER_SMB1351)    += smb1351_charger.o
-
-    KBUILD_CFLAGS += -DCONFIG_SMB1351=1
-endif
