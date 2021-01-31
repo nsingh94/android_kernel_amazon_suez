@@ -1,0 +1,11 @@
+# Hall sensors
+config INPUT_HALL_SENSOR
+	bool "hall sensor support"
+	help
+	Support for hall sensor.
+
+# Temperature sensors
+config INPUT_TEMPERATURE_TMP103
+       bool "TMP103 temperature sensor support"
+       help
+         Support for TI Digital Temperature Sensor TMP103
