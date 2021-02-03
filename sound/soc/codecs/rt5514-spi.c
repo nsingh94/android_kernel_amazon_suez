@@ -108,7 +108,7 @@ static struct snd_soc_dai_driver rt5514_spi_dai = {
 };
 
 static void send_dsp_reset_event(struct rt5514_dsp *rt5514_dsp) {
-	static const char * const reset_event[] = { "ACTION=DSP_RESET", NULL };
+	static char * reset_event[] = { "ACTION=DSP_RESET", NULL };
 	if (!rt5514_dsp->sending_crash_event) {
 		pr_err("%s -- send dsp reset uevent!\n", __func__);
 		kobject_uevent_env(&rt5514_dsp->dev->kobj, KOBJ_CHANGE, reset_event);

@@ -43,31 +43,6 @@ static int rt5514_dsp_set_idle_mode(struct snd_soc_codec *codec, int IdleMode);
 static int rt5514_set_dsp_mode(struct snd_soc_codec *codec, int DSPMode);
 static struct rt5514_priv *rt5514_pointer;
 
-static struct reg_default rt5514_init_list[] = {
-	{RT5514_DIG_IO_CTRL,		0x00000040},
-	{RT5514_CLK_CTRL1,		0x38020041},
-	{RT5514_SRC_CTRL,		0x44000eee},
-	{RT5514_ANA_CTRL_LDO10,		0x00028604},
-	{RT5514_ANA_CTRL_ADCFED,	0x00000800},
-	{RT5514_DOWNFILTER0_CTRL3,	0x10000362},
-	{RT5514_DOWNFILTER1_CTRL3,	0x10000362},
-#ifdef RT5514_USE_AMIC
-	{RT5514_PWR_ANA1,		0x00800880},
-#endif
-};
-
-static int rt5514_reg_init(struct snd_soc_codec *codec)
-{
-	struct rt5514_priv *rt5514 = snd_soc_codec_get_drvdata(codec);
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(rt5514_init_list); i++)
-		regmap_write(rt5514->regmap, rt5514_init_list[i].reg,
-			rt5514_init_list[i].def);
-
-	return 0;
-}
-
 static const struct reg_default rt5514_reg[] = {
 	{RT5514_BUFFER_VOICE_WP,	0x00000000},
 	{RT5514_DSP_WDG_1,		0x00000000},
@@ -534,6 +509,7 @@ void rt5514_parse_header(struct snd_soc_codec *codec, const u8 *buf)
 		}
 	}
 
+#ifdef CONFIG_SND_SOC_RT5514_TEST_ONLY
 exit_TDArray:
 	if (sMicFWSubHeader.TDArray)
 		kfree(sMicFWSubHeader.TDArray);
@@ -542,6 +518,7 @@ exit_BinArray:
 	if (sMicFWHeader.BinArray)
 		kfree(sMicFWHeader.BinArray);
 }
+#endif
 
 static int rt5514_dsp_mode_put(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol)
@@ -1630,8 +1607,6 @@ static int rt5514_probe(struct snd_soc_codec *codec)
 
 	rt5514->codec = codec;
 
-	//rt5514_reg_init(codec);
-
 	rt5514_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	mutex_lock(&rt5514->dspcontrol_lock);
 	rt5514_dsp_set_idle_mode(codec, 1);
@@ -1811,7 +1786,7 @@ void rt5514_reset_duetoSPI(void)
 static void rt5514_do_hotword_work(struct work_struct *work)
 {
 	struct rt5514_priv *rt5514 = container_of(work, struct rt5514_priv, hotword_work);
-	static const char * const hot_event[] = { "ACTION=HOTWORD", NULL };
+	static char * hot_event[] = { "ACTION=HOTWORD", NULL };
 
 	rt5514_get_energy_info(&rt5514->irq_speech_energy, &rt5514->irq_ambient_energy);
 	pr_info("%s -- send hotword uevent!\n", __func__);
@@ -1823,7 +1798,7 @@ static void rt5514_do_hotword_work(struct work_struct *work)
 static void rt5514_do_watchdog_work(struct work_struct *work)
 {
 	struct rt5514_priv *rt5514 = container_of(work, struct rt5514_priv, watchdog_work);
-	static const char * const wdg_event[] = { "ACTION=WATCHDOG", NULL };
+	static char * wdg_event[] = { "ACTION=WATCHDOG", NULL };
 	int PrevDspMode;
 	int PrevIdleMode;
 
