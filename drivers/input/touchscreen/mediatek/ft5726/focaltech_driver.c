@@ -39,10 +39,6 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#include <linux/power_supply.h>
-#endif
 
 #ifdef CONFIG_FB
 #include <linux/notifier.h>
@@ -321,34 +317,6 @@ static void tpd_wakeup_handler(void)
 }
 #endif
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-int charger_exist(void)
-{
-	int ret;
-	struct power_supply *psy;
-	union power_supply_propval online_usb, online_ac;
-
-	psy = power_supply_get_by_name("usb");
-	if (!psy)
-		return -ENODEV;
-	ret = psy->get_property(psy, POWER_SUPPLY_PROP_ONLINE, &online_usb);
-	if (ret)
-		return -ENOENT;
-
-	psy = power_supply_get_by_name("ac");
-	if (!psy)
-		return -ENODEV;
-	ret = psy->get_property(psy, POWER_SUPPLY_PROP_ONLINE, &online_ac);
-	if (ret)
-		return -ENOENT;
-
-	if (online_usb.intval || online_ac.intval)
-		return 1;
-	else
-		return 0;
-}
-#endif
-
 /***********************************************************************
 * Name: fts_report_value
 * Brief: report the point information
@@ -364,26 +332,11 @@ static int fts_report_value(struct ts_event *data)
 	struct fts_packet_info buf;
 	struct fts_touch_info *touch;
 	int i, x, y;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	char buffer[64];
-	int charger_flag = 0;
-#endif
 
 #ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
 	if (focal_suspend_flag && (gesture_wakeup_enabled == 1)) {
 		tpd_wakeup_handler();
 		focal_suspend_flag = false;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		charger_flag = charger_exist();
-		if (charger_flag >= 0) {
-			snprintf(buffer, sizeof(buffer),
-				"%s:touchwakup:%s_charger_wakeup=1;CT;1:NR",
-				__func__, (charger_flag ? "with" : "without"));
-			log_to_metrics(ANDROID_LOG_INFO, "TouchWakeup", buffer);
-		} else
-			pr_err("[focal] %s charger_exist error: %d\n",
-				__func__, charger_flag);
-#endif
 	}
 #endif
 
