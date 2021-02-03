@@ -63,6 +63,12 @@
 #define TPD_MODE_RAW_DATA 5
 #undef TPD_RES_X
 #undef TPD_RES_Y
+#ifdef CONFIG_SHOW_TOUCH_VENDOR
+#define FT_LENS_ID 0x6d
+#define FT_TopGroup_ID 0x3e
+#define FT_LENS_ID_PROTO 0x57
+extern unsigned char ft_vendor_id;
+#endif
 extern unsigned long TPD_RES_X;
 extern unsigned long TPD_RES_Y;
 extern int tpd_load_status;	/* 0: failed, 1: success */

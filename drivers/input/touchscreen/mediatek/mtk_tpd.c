@@ -40,6 +40,9 @@
 /* for magnify velocity******************************************** */
 #define TOUCH_IOC_MAGIC 'A'
 
+#ifdef CONFIG_SHOW_TOUCH_VENDOR
+	static char *vendor_name;
+#endif
 #define TPD_GET_VELOCITY_CUSTOM_X _IO(TOUCH_IOC_MAGIC, 0)
 #define TPD_GET_VELOCITY_CUSTOM_Y _IO(TOUCH_IOC_MAGIC, 1)
 #define TPD_GET_FILTER_PARA _IOWR(TOUCH_IOC_MAGIC, 2, struct tpd_filter_t)
@@ -408,6 +411,19 @@ static int tpd_fb_notifier_callback(struct notifier_block *self, unsigned long e
 	return 0;
 }
 
+#ifdef CONFIG_SHOW_TOUCH_VENDOR
+/* read vendor_name
+* example: cat sys/bus/platform/drivers/mtk-tpd/soc:touch@/vendor_name
+*/
+static ssize_t show_vendor_name(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%s\n", vendor_name);
+}
+
+static DEVICE_ATTR(vendor_name, S_IRUGO, show_vendor_name, NULL);
+#endif
+
 int tpd_driver_remove(struct tpd_driver_t *tpd_drv)
 {
 	int i = 0;
@@ -438,6 +454,9 @@ static int tpd_probe(struct platform_device *pdev)
 {
 	int touch_type = 1;	/* 0:R-touch, 1: Cap-touch */
 	int i = 0;
+#ifdef CONFIG_SHOW_TOUCH_VENDOR
+	int error = 0;
+#endif
 #ifndef CONFIG_CUSTOM_LCM_X
 #ifdef CONFIG_LCM_WIDTH
 	unsigned long tpd_res_x = 0, tpd_res_y = 0;
@@ -601,6 +620,26 @@ static int tpd_probe(struct platform_device *pdev)
 
 	if (g_tpd_drv->attrs.num)
 		tpd_create_attributes(&pdev->dev, &g_tpd_drv->attrs);
+
+#ifdef CONFIG_SHOW_TOUCH_VENDOR
+	error = device_create_file(&pdev->dev, &dev_attr_vendor_name);
+	if (error)
+		pr_err("Failed to create vendor_name attribute (%d)\n", error);
+
+	vendor_name = g_tpd_drv->tpd_device_name;
+	TPD_DMESG("ft_vendor_id = 0x%x\n", ft_vendor_id);
+	if (strcmp(vendor_name, "ft5726") == 0) {
+		if (ft_vendor_id == FT_LENS_ID)
+			vendor_name = "fts_lens";
+		else if (ft_vendor_id == FT_TopGroup_ID)
+			vendor_name = "fts_topgroup";
+		else if (ft_vendor_id == FT_LENS_ID_PROTO)
+			vendor_name = "fts_lens_proto";
+		else
+			vendor_name = "fts_unknown";
+	} else if (NULL == vendor_name)
+		vendor_name = "no vendor name";
+#endif
 
 	return 0;
 }
