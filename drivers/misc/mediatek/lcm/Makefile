@@ -13,9 +13,9 @@ obj-$(CONFIG_MTK_LCM) += mt65xx_lcm_list.o        \
 #LCM_LISTS := $(subst ",,$(CONFIG_CUSTOM_KERNEL_LCM))
 #obj-$(CONFIG_MTK_LCM) += $(foreach LCM,$(LCM_LISTS),$(LCM)/)
 
-LCM_MID := $(shell ls $(srctree)/drivers/misc/mediatek/lcm/mid/)
-$(info ****************MID_LCM: $(LCM_MID) ********************)
-obj-y += $(foreach LCM,$(LCM_MID),mid/$(LCM)/)
+#LCM_MID := $(shell ls $(srctree)/drivers/misc/mediatek/lcm/mid/)
+#$(info ****************MID_LCM: $(LCM_MID) ********************)
+#obj-y += $(foreach LCM,$(LCM_MID),mid/$(LCM)/)
 
 subdir-ccflags-$(CONFIG_MTK_LCM) += -I$(srctree)/drivers/misc/mediatek/lcm/inc
 subdir-ccflags-$(CONFIG_MTK_FB) += -I$(srctree)/drivers/misc/mediatek/video/$(MTK_PLATFORM)/dispsys \
