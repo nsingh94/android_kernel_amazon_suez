@@ -220,7 +220,7 @@ static ssize_t tmp103_set_temp_user_space(struct device *dev,
 	return count;
 }
 
-static int tmp103_temp_sensor_read_temp(struct device *dev,
+static ssize_t tmp103_temp_sensor_read_temp(struct device *dev,
 					struct device_attribute *devattr, char *buf)
 {
 	int temp = tmp103_read_current_temp(dev);
@@ -228,7 +228,7 @@ static int tmp103_temp_sensor_read_temp(struct device *dev,
 	return sprintf(buf, "%d\n", temp);
 }
 
-static int tmp103_temp_sensor_show_params(struct device *dev,
+static ssize_t tmp103_temp_sensor_show_params(struct device *dev,
 					  struct device_attribute *devattr, char *buf)
 {
 	struct i2c_client *client = to_i2c_client(dev);
