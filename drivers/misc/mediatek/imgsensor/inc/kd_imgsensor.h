@@ -281,6 +281,7 @@
 #define GC0310MIPI_SENSOR_ID                    0xa310	
 #define GC0313MIPI_YUV_SENSOR_ID                0xD0
 #define GC0312_SENSOR_ID                        0xb310
+#define GC0312MIPI_SENSOR_ID                    0xb310
 #define GC2355MIPI_SENSOR_ID                    (GC2355_SENSOR_ID+1)
 #define GC030AMIPI_SENSOR_ID                    0x030a
 #define GC033AMIPI_SENSOR_ID                    0x033a
