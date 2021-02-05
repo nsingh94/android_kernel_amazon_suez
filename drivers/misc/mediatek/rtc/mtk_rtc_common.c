@@ -232,6 +232,32 @@ int set_rtc_spare_fg_value(int val)
 	return 0;
 }
 
+int get_rtc_residual_fg_value(void)
+{
+	u16 temp;
+	unsigned long flags;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	temp = hal_rtc_get_spare_register(RTC_FG_RESIDUAL);
+	spin_unlock_irqrestore(&rtc_lock, flags);
+
+	return temp;
+}
+
+int set_rtc_residual_fg_value(int val)
+{
+	unsigned long flags;
+
+	if (val > 7)
+		return 1;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	hal_rtc_set_spare_register(RTC_FG_RESIDUAL, val);
+	spin_unlock_irqrestore(&rtc_lock, flags);
+
+	return 0;
+}
+
 bool crystal_exist_status(void)
 {
 	unsigned long flags;
