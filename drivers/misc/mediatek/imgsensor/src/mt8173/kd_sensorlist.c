@@ -100,6 +100,8 @@ typedef unsigned char BOOL;
 #include <mt_cam.h>
 
 static DEFINE_SPINLOCK(kdsensor_drv_lock);
+int RFC_id_value = -1;
+int FFC_id_value = -1;
 
 /* I2C bus # should be defined in board-proj.c to be proj dependent */
 /*
@@ -3912,6 +3914,7 @@ enum CAMERA_GPIO {
 	CAMERA_GPIO_RST,
 	CAMERA_GPIO_PDN,
 	CAMERA_GPIO_LDO,
+	CAMERA_GPIO_ID,
 	CAMERA_GPIO_COUNT,
 };
 struct Mtkcam_GPIO {
@@ -4002,6 +4005,34 @@ int mtkcam_gpio_set(int PinIdx, int PwrType, int Val)
 		return gpiono;
 }
 EXPORT_SYMBOL(mtkcam_gpio_set);
+
+int mtkcam_gpio_read_id(int PinIdx)
+{
+	unsigned int gpiono = GPIO_CAMERA_INVALID;
+	int id = 0;
+
+	gpiono = cam_gpio[PinIdx][CAMERA_GPIO_ID].num;
+
+	if (!gpio_is_valid(gpiono)) {
+		PK_DBG("query gpio failed, PinIdx = %d\n", PinIdx);
+		return -1;
+	}
+
+	gpio_direction_input(gpiono);
+	id = gpio_get_value(gpiono);
+	PK_DBG("camera id pin = %d\n", id);
+
+	if (PinIdx == 0) {
+		PK_DBG("PinIdx(%d) RFC #### read gpio#%d\n", PinIdx, gpiono);
+		RFC_id_value = id;
+	} else if (PinIdx == 1) {
+		PK_DBG("PinIdx(%d) FFC #### read gpio#%d\n", PinIdx, gpiono);
+		FFC_id_value = id;
+	}
+
+	return id;
+}
+EXPORT_SYMBOL(mtkcam_gpio_read_id);
 #endif	/*  MTKCAM_USING_DTGPIO */
 
 /*******************************************************************************
