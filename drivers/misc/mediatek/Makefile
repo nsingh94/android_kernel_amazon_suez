@@ -37,6 +37,7 @@ obj-$(CONFIG_MTK_PWM)	    += pwm/
 obj-$(CONFIG_MTK_CAM_CAL) += cam_cal/src/
 obj-$(CONFIG_MTK_SENSORS_1_0) += sensors-1.0/
 obj-$(CONFIG_MTPROF)	+= mtprof/
+obj-$(CONFIG_MTK_LEDS)	+= leds/
 obj-$(CONFIG_CUSTOM_KERNEL_CHARGEPUMP) += chargepump/
 obj-$(CONFIG_MTK_ACCDET)	+= accdet/
 obj-$(CONFIG_MTK_ECCCI_C2K) += c2k_usb/
