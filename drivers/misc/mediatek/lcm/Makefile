@@ -4,14 +4,14 @@
 
 obj-$(CONFIG_MTK_LCM) += mt65xx_lcm_list.o        \
                          lcm_common.o             \
-                         lcm_common_get_power.o   \
                          lcm_gpio.o               \
                          lcm_i2c.o                \
                          lcm_pmic.o               \
                          lcm_util.o
+#                         lcm_common_get_power.o   \
 
-#LCM_LISTS := $(subst ",,$(CONFIG_CUSTOM_KERNEL_LCM))
-#obj-$(CONFIG_MTK_LCM) += $(foreach LCM,$(LCM_LISTS),$(LCM)/)
+LCM_LISTS := $(subst ",,$(CONFIG_CUSTOM_KERNEL_LCM))
+obj-$(CONFIG_MTK_LCM) += $(foreach LCM,$(LCM_LISTS),$(LCM)/)
 
 #LCM_MID := $(shell ls $(srctree)/drivers/misc/mediatek/lcm/mid/)
 #$(info ****************MID_LCM: $(LCM_MID) ********************)

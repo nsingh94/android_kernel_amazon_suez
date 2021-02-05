@@ -169,8 +169,6 @@ static wait_queue_head_t _dsi_wait_vm_cmd_done_queue[2];
 static bool wait_vm_cmd_done;
 static int s_isDsiPowerOn;
 static int dsi_currect_mode;
-static int bl_level=0;
-static int bl_level_temp=0;
 
 static void _DSI_INTERNAL_IRQ_Handler(DISP_MODULE_ENUM module, unsigned int param)
 {
@@ -962,6 +960,11 @@ void DSI_PHY_clk_setting(DISP_MODULE_ENUM module, cmdqRecHandle cmdq, LCM_DSI_PA
 
 	DISPFUNC();
 	for (i = DSI_MODULE_BEGIN(module); i <= DSI_MODULE_END(module); i++) {
+		// step 0
+		if (dsi_params->cust_clk_impendence)
+			DSI_OUTREGBIT(cmdq, MIPITX_DSI_CLOCK_LANE_REG, DSI_PHY_REG[i]->MIPITX_DSI_CLOCK_LANE,
+			      RG_DSI_LNTC_RT_CODE, dsi_params->cust_clk_impendence);
+
 		/* step 1 */
 		/* MIPITX_MASKREG32(APMIXED_BASE+0x00, (0x1<<6), 1); */
 
@@ -2993,8 +2996,6 @@ int ddp_dsi_clk_off(DISP_MODULE_ENUM module, void *cmdq_handle, unsigned int lev
 	return ret;
 }
 
-extern  void lcm_cmd_set_backlight(unsigned int level);
-
 int ddp_dsi_ioctl(DISP_MODULE_ENUM module, void *cmdq_handle, unsigned int ioctl_cmd,
 		  unsigned long *params)
 {
@@ -3025,7 +3026,6 @@ int ddp_dsi_ioctl(DISP_MODULE_ENUM module, void *cmdq_handle, unsigned int ioctl
 		}
 	case DDP_BACK_LIGHT:
 		{
-		#if 0
 			unsigned int cmd = 0x51;
 			unsigned int count = 1;
 			unsigned int level = params[0];
@@ -3033,39 +3033,6 @@ int ddp_dsi_ioctl(DISP_MODULE_ENUM module, void *cmdq_handle, unsigned int ioctl
 			DDPMSG("[ddp_dsi_ioctl] level = %d\n", level);
 			DSI_set_cmdq_V2(module, cmdq_handle, cmd, count, (unsigned char *)&level,
 					1);
-                #endif
-                       unsigned int level = params[0];
-   DISPERR("[ddp_dsi_ioctl] level = %d\n", level);     //add jin
-	switch(level) {
-		case 0 ... 29:    bl_level=20; break;
-		case 30 ... 34:   bl_level=1; break;
-		case 35 ... 39:   bl_level=2; break;
-		case 40 ... 44:	  bl_level=3; break;
-		case 45 ... 49:	  bl_level=4; break;
-		case 50 ... 54:   bl_level=5; break;
-		case 55 ... 64:   bl_level=6; break;
-		case 65 ... 74:   bl_level=7; break;
-		case 75 ... 83:   bl_level=8; break;
-		case 84 ... 93:   bl_level=9; break;
-		case 94 ... 103:  bl_level=10; break;
-		case 104 ... 113: bl_level=11; break;
-		case 114 ... 122: bl_level=12; break;
-		case 123 ... 132: bl_level=13; break;
-		case 133 ... 142: bl_level=14; break;
-		case 143 ... 169: bl_level=15; break;
-		case 170 ... 205: bl_level=16; break;
-		case 206 ... 230: bl_level=17; break;
-		case 231 ... 250: bl_level=18; break;
-		case 251 ... 255: bl_level=19; break;
-		default:bl_level=0; break;
-	}
-		   
-	  if ((bl_level!=bl_level_temp)||(bl_level_temp==0))	
-	  {		  
- // printk("------------------xuchen bl_level=%d,level=%d----------------\n",bl_level,level);	
-      lcm_cmd_set_backlight(level);
-	   bl_level_temp=bl_level;
-	  }
 		break;
 		}
 	case DDP_DSI_IDLE_CLK_CLOSED:
