@@ -17,10 +17,10 @@
 #include <linux/module.h>
 #include <sound/soc.h>
 
-#ifdef CONFIG_SND_SOC_RT5514
-#include "../../codecs/rt5514.h"
+#ifdef CONFIG_SND_SOC_RT551X
+#include "../../codecs/rt551x.h"
 
-static int mt8173_rt5514_hw_params(struct snd_pcm_substream *substream,
+static int mt8173_rt551x_hw_params(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -32,20 +32,20 @@ static int mt8173_rt5514_hw_params(struct snd_pcm_substream *substream,
 	if (ret)
 		return ret;
 
-	ret = snd_soc_dai_set_sysclk(codec_dai, RT5514_SCLK_S_MCLK,
+	ret = snd_soc_dai_set_sysclk(codec_dai, RT551X_SCLK_S_MCLK,
 				params_rate(params) * 256, SND_SOC_CLOCK_IN);
 	if (ret)
 		return ret;
 	return 0;
 }
 
-static struct snd_soc_ops mt8173_rt5514_ops = {
-	.hw_params = mt8173_rt5514_hw_params,
+static struct snd_soc_ops mt8173_rt551x_ops = {
+	.hw_params = mt8173_rt551x_hw_params,
 };
 
-static struct snd_soc_dai_link_component mt8173_rt5514_codecs[] = {
+static struct snd_soc_dai_link_component mt8173_rt551x_codecs[] = {
 	{
-		.dai_name = "rt5514-aif1",
+		.dai_name = "rt551x-aif1",
 	},
 };
 
@@ -160,10 +160,10 @@ static struct snd_soc_dai_link mt8173_dais[] = {
 	 .no_pcm = 1,
 	 },
 };
-#ifdef CONFIG_SND_SOC_RT5514
-static struct snd_soc_dai_link mt8173_rt5514_dsp_dais[] = {
+#ifdef CONFIG_SND_SOC_RT551X
+static struct snd_soc_dai_link mt8173_rt551x_dsp_dais[] = {
 	{
-	.name = "RT5514 DSP",
+	.name = "RT551X DSP",
 	.stream_name = "DSP_Capture",
 	.cpu_dai_name = "spi32766.0",
 	.platform_name = "spi32766.0",
@@ -173,8 +173,8 @@ static struct snd_soc_dai_link mt8173_rt5514_dsp_dais[] = {
 };
 
 static struct snd_soc_dai_link
-		mt8173_rt5514_dais[ARRAY_SIZE(mt8173_dais)
-		+ ARRAY_SIZE(mt8173_rt5514_dsp_dais)];
+		mt8173_rt551x_dais[ARRAY_SIZE(mt8173_dais)
+		+ ARRAY_SIZE(mt8173_rt551x_dsp_dais)];
 #endif
 
 static int mt8173_channel_cap_set(struct snd_kcontrol *kcontrol,
@@ -216,8 +216,8 @@ static int mt8173_dev_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = &mt8173_card;
 	struct device *dev = &pdev->dev;
-#ifdef CONFIG_SND_SOC_RT5514
-	const char *rt5514_dai_name = "";
+#ifdef CONFIG_SND_SOC_RT551X
+	const char *rt551x_dai_name = "";
 	int found = 0;
 #endif
 	int ret;
@@ -229,8 +229,8 @@ static int mt8173_dev_probe(struct platform_device *pdev)
 		pr_debug("%s set dev name %s\n", __func__, dev_name(dev));
 	}
 
-#ifdef CONFIG_SND_SOC_RT5514
-	ret = snd_soc_of_get_dai_name(pdev->dev.of_node, &rt5514_dai_name);
+#ifdef CONFIG_SND_SOC_RT551X
+	ret = snd_soc_of_get_dai_name(pdev->dev.of_node, &rt551x_dai_name);
 	if (ret < 0)
 		pr_err("%s snd_soc_of_get_dai_name fail %d\n", __func__, ret);
 	else
@@ -238,19 +238,19 @@ static int mt8173_dev_probe(struct platform_device *pdev)
 	if (found) {
 		mt8173_dais[5].codec_name = NULL;
 		mt8173_dais[5].codec_dai_name = NULL;
-		mt8173_rt5514_codecs[0].of_node =
+		mt8173_rt551x_codecs[0].of_node =
 			of_parse_phandle(pdev->dev.of_node, "sound-dai", 0);
-		mt8173_dais[5].codecs = mt8173_rt5514_codecs;
+		mt8173_dais[5].codecs = mt8173_rt551x_codecs;
 		mt8173_dais[5].num_codecs = 1;
-		mt8173_dais[5].ops = &mt8173_rt5514_ops;
-		memcpy(mt8173_rt5514_dais,
+		mt8173_dais[5].ops = &mt8173_rt551x_ops;
+		memcpy(mt8173_rt551x_dais,
 				mt8173_dais, sizeof(mt8173_dais));
-		memcpy((mt8173_rt5514_dais + ARRAY_SIZE(mt8173_dais)),
-				mt8173_rt5514_dsp_dais,
-				sizeof(mt8173_rt5514_dsp_dais));
-		mt8173_card.dai_link = mt8173_rt5514_dais;
+		memcpy((mt8173_rt551x_dais + ARRAY_SIZE(mt8173_dais)),
+				mt8173_rt551x_dsp_dais,
+				sizeof(mt8173_rt551x_dsp_dais));
+		mt8173_card.dai_link = mt8173_rt551x_dais;
 		mt8173_card.num_links =
-				ARRAY_SIZE(mt8173_rt5514_dais);
+				ARRAY_SIZE(mt8173_rt551x_dais);
 	}
 #endif
 	card->dev = dev;

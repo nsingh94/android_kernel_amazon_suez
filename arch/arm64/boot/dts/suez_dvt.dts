@@ -260,8 +260,8 @@
 		compatible = "mediatek,camera_hw2_i2c";
 		reg = <0x21>;
 	};
-	rt5514: audio-codec@57 {
-		compatible = "realtek,rt5514";
+	rt551x: audio-codec@57 {
+		compatible = "realtek,rt551x";
 		#sound-dai-cells = <0>;
 		reg = <0x57>;
 		interrupt-parent = <&pio>;
@@ -1175,8 +1175,8 @@
 	mediatek,pad-select = <0>;
 	status = "okay";
 	/* clients */
-	rt5514_spi: audio-codec@0 {
-		compatible = "realtek,rt5514";
+	rt551x_spi: audio-codec@0 {
+		compatible = "realtek,rt551x";
 		reg = <0x0>;
 		spi-max-frequency = <18000000>;
 	};
@@ -1186,7 +1186,7 @@
 	mediatek,board-channel-type = <0>; /* 0(Stereo) 1(MonoLeft) 2(MonoRight) */
 	pinctrl-names = "default";
 	pinctrl-0 = <&audio_pins_default>;
-	sound-dai = <&rt5514>;
+	sound-dai = <&rt551x>;
 };
 
 &touch {

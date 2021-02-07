@@ -501,6 +501,14 @@ config SND_SOC_RT5514_SPI
 	tristate "SND_SOC_RT5514_SPI"
 	depends on SPI_MASTER
 
+config SND_SOC_RT551X
+        tristate "SND_SOC_RT551X"
+        default y if SND_SOC_RT551X_SPI=y
+
+config SND_SOC_RT551X_SPI
+        tristate "SND_SOC_RT551X_SPI"
+        depends on SPI_MASTER
+
 config SND_SOC_RT5631
 	tristate
 
