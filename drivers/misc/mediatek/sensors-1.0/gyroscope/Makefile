@@ -5,7 +5,4 @@ obj-y   +=  gyroscope.o gyro_factory.o
 
 
 obj-$(CONFIG_MTK_GYROHUB)      +=  gyrohub/
-obj-$(CONFIG_MTK_BMI160_SPI)   +=  bmi160gy-spi/
-obj-$(CONFIG_MTK_ITG1010)   +=  ITG1010/
-obj-$(CONFIG_MTK_MPU6515G)	+= mpu6515/
-obj-$(CONFIG_MTK_MPU6050GY)   +=  mpu6050gy/
+obj-$(CONFIG_MTK_BMI160GY_I2C) +=  bmi160gy-i2c/

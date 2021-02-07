@@ -1,4 +1,4 @@
-/* BMA253 motion sensor driver
+/* BMA150 motion sensor driver
  *
  *
  *
@@ -18,276 +18,244 @@
 #include <linux/slab.h>
 #include <linux/irq.h>
 #include <linux/miscdevice.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/delay.h>
 #include <linux/input.h>
 #include <linux/workqueue.h>
 #include <linux/kobject.h>
 #include <linux/platform_device.h>
-#include <linux/atomic.h>
-#include <linux/kernel.h>
-#include "upmu_sw.h"
-#include "upmu_common.h"
-#include "batch.h"
-
-#define POWER_NONE_MACRO MT65XX_POWER_NONE
-
+#include <asm/atomic.h>
+#include <linux/kthread.h>
 #include <cust_acc.h>
+#include <accel.h>
+#include <hwmsensor.h>
+#include <sensors_io.h>
+#include <hwmsen_helper.h>
+#include <linux/kernel.h>
+#include <upmu_common.h>
+
 #include "bma253.h"
 
-#include <accel.h>
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
-#include <SCP_sensorHub.h>
+#ifdef CUSTOM_KERNEL_SENSORHUB
+	#include <SCP_sensorHub.h>
+#endif
+
+#define GSENSOR_CALI	0
+
+/*----------------------------------------------------------------------------*/
+#define I2C_DRIVERID_BMA250 250
+/*----------------------------------------------------------------------------*/
+#define DEBUG	1
+#define BMA250_ACC_AXES_NUM	3
+#define ACCEL_SELF_TEST_MIN_VAL		0
+#define ACCEL_SELF_TEST_MAX_VAL		13000
+
+#define BMA250_MODE_NORMAL      0
+#define BMA250_MODE_SUSPEND     1
+/* default tolenrance is 20% */
+static int accel_cali_tolerance = 20;
+
+/*----------------------------------------------------------------------------*/
+#define SW_CALIBRATION
+
+#if GSENSOR_CALI
+	#define LIBHWM_GRAVITY_EARTH			(9.80665f)
+typedef union {
+	struct {
+		int rx;
+		int ry;
+		int rz;
+	};
+	struct {
+		float x;
+		float y;
+		float z;
+	};
+
+} HwmData;
+
+struct manuf_gsensor_cali {
+	int cali_x;
+	int cali_y;
+	int cali_z;
+};
+extern int fih_read_gsensor_cali(struct manuf_gsensor_cali *p);
+extern int fih_write_gsensor_cali(struct manuf_gsensor_cali *p);
+struct manuf_gsensor_cali partition_calidata;
 #endif
 
 /*----------------------------------------------------------------------------*/
-#define I2C_DRIVERID_BMA253 253
-/*----------------------------------------------------------------------------*/
-#define DEBUG 1
-#define GSE_DUBUG 1
-/*----------------------------------------------------------------------------*/
-
-#define SW_CALIBRATION
-#define BMA253_CAL_FILE   "/data/gsensor_cal_data.bin"
 
 /*----------------------------------------------------------------------------*/
-#define BMA253_AXIS_X          0
-#define BMA253_AXIS_Y          1
-#define BMA253_AXIS_Z          2
-#define BMA253_DATA_LEN        6
-#define BMA253_DEV_NAME        "BMA253"
-/*----------------------------------------------------------------------------*/
-
-/*********/
-/*----------------------------------------------------------------------------*/
-static const struct i2c_device_id bma253_i2c_id[] = { {BMA253_DEV_NAME, 0}, {} };
-/* static struct i2c_board_info __initdata i2c_BMA253 = {	I2C_BOARD_INFO(BMA253_DEV_NAME, 0x18) }; */
-#define COMPATIABLE_NAME "mediatek,bma253"
+static const struct i2c_device_id bma250_i2c_id[] = {{BMA250_DEV_NAME, 0}, {} };
+static int accel_self_test[BMA250_ACC_AXES_NUM] = {0};
+static s16 accel_xyz_offset[BMA250_ACC_AXES_NUM] = {0};
+/*the adapter id will be available in customization*/
 
 /*----------------------------------------------------------------------------*/
-static int bma253_i2c_probe(struct i2c_client *client,
-			    const struct i2c_device_id *id);
-static int bma253_i2c_remove(struct i2c_client *client);
-static int bma253_suspend(struct i2c_client *client, pm_message_t msg);
-static int bma253_resume(struct i2c_client *client);
-
-
-static int gsensor_local_init(void);
-static int gsensor_remove(void);
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+static int bma250_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id);
+static int bma250_i2c_remove(struct i2c_client *client);
+#ifdef CUSTOM_KERNEL_SENSORHUB
 static int gsensor_setup_irq(void);
 #endif
+
+#ifdef CONFIG_PM_SLEEP
+static int bma250_i2c_suspend(struct device *dev);
+static int bma250_i2c_resume(struct device *dev);
+#endif
+
+static int BMA250_ReadSensorData(struct i2c_client *client, char *buf, int bufsize);
+static int gsensor_local_init(void);
+static int gsensor_remove(void);
 static int gsensor_set_delay(u64 ns);
+
+static DEFINE_MUTEX(gsensor_mutex);
+static DEFINE_MUTEX(gsensor_scp_en_mutex);
+
+
+static bool enable_status;
+
+static int gsensor_init_flag = -1;
+
+static struct acc_init_info bma250_init_info = {
+	.name = "bma250",
+	.init = gsensor_local_init,
+	.uninit = gsensor_remove,
+};
 
 /*----------------------------------------------------------------------------*/
 typedef enum {
-	ADX_TRC_FILTER = 0x01,
+	ADX_TRC_FILTER	= 0x01,
 	ADX_TRC_RAWDATA = 0x02,
-	ADX_TRC_IOCTL = 0x04,
-	ADX_TRC_CALI = 0X08,
-	ADX_TRC_INFO = 0X10,
+	ADX_TRC_IOCTL	= 0x04,
+	ADX_TRC_CALI	= 0X08,
+	ADX_TRC_INFO	= 0X10,
 } ADX_TRC;
 /*----------------------------------------------------------------------------*/
 struct scale_factor {
-	u8 whole;
-	u8 fraction;
+	u8	whole;
+	u8	fraction;
 };
 /*----------------------------------------------------------------------------*/
 struct data_resolution {
 	struct scale_factor scalefactor;
-	int sensitivity;
+	int					sensitivity;
 };
 /*----------------------------------------------------------------------------*/
 #define C_MAX_FIR_LENGTH (32)
 /*----------------------------------------------------------------------------*/
 struct data_filter {
-	s16 raw[C_MAX_FIR_LENGTH][BMA253_AXES_NUM];
-	int sum[BMA253_AXES_NUM];
+	s16 raw[C_MAX_FIR_LENGTH][BMA250_AXES_NUM];
+	int sum[BMA250_AXES_NUM];
 	int num;
 	int idx;
 };
 /*----------------------------------------------------------------------------*/
-struct bma253_i2c_data {
+struct bma250_i2c_data {
 	struct i2c_client *client;
 	struct acc_hw *hw;
-	struct hwmsen_convert cvt;
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	struct work_struct irq_work;
+	struct hwmsen_convert	cvt;
+
+#ifdef CUSTOM_KERNEL_SENSORHUB
+	struct work_struct	irq_work;
 #endif
 
-	/*misc */
+	/*misc*/
 	struct data_resolution *reso;
-	atomic_t trace;
-	atomic_t suspend;
-	atomic_t selftest;
-	atomic_t filter;
-	s16 cali_sw[BMA253_AXES_NUM + 1];
+	atomic_t				trace;
+	atomic_t				suspend;
+	atomic_t				selftest;
+	atomic_t				filter;
+	s16						cali_sw[BMA250_AXES_NUM+1];
 
-	/*data */
-	s8 offset[BMA253_AXES_NUM + 1];	/*+1: for 4-byte alignment */
-	s16 data[BMA253_AXES_NUM + 1];
+	/*data*/
+	s8						offset[BMA250_AXES_NUM+1];	/*+1: for 4-byte alignment*/
+	s16						data[BMA250_AXES_NUM+1];
 
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	int SCP_init_done;
+#ifdef CUSTOM_KERNEL_SENSORHUB
+	int						SCP_init_done;
 #endif
 
-#if defined(CONFIG_BMA253_LOWPASS)
-	atomic_t firlen;
-	atomic_t fir_en;
-	struct data_filter fir;
+#if defined(CONFIG_BMA250_LOWPASS)
+	atomic_t				firlen;
+	atomic_t				fir_en;
+	struct data_filter		fir;
 #endif
-	u8 bandwidth;
+	/*early suspend*/
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+	struct early_suspend	early_drv;
+#endif
 };
-/*----------------------------------------------------------------------------*/
+enum bma250_rev {
+	BMA250,
+	BMA250E,
+};
 
+static struct acc_hw accel_cust;
+static struct acc_hw *hw = &accel_cust;
+#ifdef CONFIG_PM_SLEEP
+static const struct dev_pm_ops bma250_i2c_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(bma250_i2c_suspend, bma250_i2c_resume)
+};
+#endif
+#ifdef CONFIG_OF
 static const struct of_device_id accel_of_match[] = {
-	{.compatible = "mediatek,gsensor"},
+	{ .compatible = "mediatek,bma_gsensor",},
 	{},
 };
-
-static struct i2c_driver bma253_i2c_driver = {
-	.driver = {
-/*        .owner          = THIS_MODULE,*/
-		   .name = BMA253_DEV_NAME,
-		   .of_match_table = accel_of_match,
-		   },
-	.probe = bma253_i2c_probe,
-	.remove = bma253_i2c_remove,
-	.suspend = bma253_suspend,
-	.resume = bma253_resume,
-	.id_table = bma253_i2c_id,
-/*      .address_data = &bma253_addr_data,*/
-};
-
-/*----------------------------------------------------------------------------*/
-static struct i2c_client *bma253_i2c_client;
-static struct bma253_i2c_data *obj_i2c_data;
-static bool sensor_power = true;
-static int sensor_suspend;
-static struct GSENSOR_VECTOR3D gsensor_gain;
-static char selftestRes[8]= {0};
-static DEFINE_MUTEX(gsensor_mutex);
-static DEFINE_MUTEX(gsensor_scp_en_mutex);
-
-static bool enable_status;
-
-static int gsensor_init_flag = -1;	/*0<==>OK -1 <==> fail*/
-static struct acc_init_info bma253_init_info = {
-	.name = BMA253_DEV_NAME,
-	.init = gsensor_local_init,
-	.uninit = gsensor_remove,
-};
-
-/*#define GSE_DUBUG*/
-
-/*----------------------------------------------------------------------------*/
-#ifdef GSE_DUBUG
-#define GSE_TAG                  "[Gsensor] "
-#define GSE_FUN(f)               printk(GSE_TAG"%s\n", __FUNCTION__)
-#define GSE_ERR(fmt, args...)    printk(GSE_TAG"%s %d : "fmt, __FUNCTION__, __LINE__, ##args)
-#define GSE_LOG(fmt, args...)    printk(GSE_TAG fmt, ##args)
-#else
-#define GSE_TAG
-#define GSE_FUN(f)
-#define GSE_ERR(fmt, args...)
-#define GSE_LOG(fmt, args...)
 #endif
-
-struct acc_hw accel_cust;
-static struct acc_hw *hw = &accel_cust;
-
-
+static int bma250_revesion = BMA250;
 /*----------------------------------------------------------------------------*/
-static struct data_resolution bma253_data_resolution[1] = {
-	/* combination by {FULL_RES,RANGE} */
-	/* dataformat +/-2g  in 8-bit resolution;  { 15, 6} = 15.6= (2*2*1000)/(2^8);  64 = (2^8)/(2*2)*/
-	{{ 0, 98}, 1024},	//TODO: +-2g in 0.98mg/12-bit, orig {{0, 975}, 1024},
+static struct i2c_driver bma250_i2c_driver = {
+	.driver = {
+		.name			= BMA250_DEV_NAME,
+#ifdef CONFIG_OF
+		.of_match_table = accel_of_match,
+#endif
+#ifdef CONFIG_PM_SLEEP
+		.pm = &bma250_i2c_pm_ops,
+#endif
+	},
+	.probe				= bma250_i2c_probe,
+	.remove				= bma250_i2c_remove,
+	.id_table = bma250_i2c_id,
 };
 
-/*----------------------------------------------------------------------------*/
-static struct data_resolution bma253_offset_resolution = { {0, 98}, 1024 };
 
 /*----------------------------------------------------------------------------*/
-static int bma_i2c_read_block(struct i2c_client *client, u8 addr, u8 *data,
-			      u8 len)
+static struct i2c_client *bma250_i2c_client;
+static struct bma250_i2c_data *obj_i2c_data;
+
+static bool sensor_power = true;
+static struct GSENSOR_VECTOR3D gsensor_gain;
+/* static char selftestRes[8]= {0}; */
+
+#define BMA250_ACC_CALI_IDME           "/proc/idme/sensorcal"
+#define BMA250_ACC_CALI_FILE           "/data/inv_cal_data.bin"
+#define BMA250_DATA_BUF_NUM            3
+
+/*----------------------------------------------------------------------------*/
+#define GSE_TAG					 "[Gsensor] "
+#define GSE_FUN(f)				 pr_debug(GSE_TAG"%s\n", __FUNCTION__)
+#define GSE_ERR(fmt, args...)	 pr_err(GSE_TAG"%s %d : "fmt, __FUNCTION__, __LINE__, ##args)
+#define GSE_LOG(fmt, args...)	 pr_debug(GSE_TAG fmt, ##args)
+/*----------------------------------------------------------------------------*/
+static struct data_resolution bma250_data_resolution[1] = {
+	/* combination by {FULL_RES,RANGE}*/
+	{{ 0, 98}, 1024},
+};
+/*----------------------------------------------------------------------------*/
+static struct data_resolution bma250_offset_resolution = {{0, 98}, 1024};
+/*--------------------BMA250 power control function----------------------------------*/
+static void BMA250_power(struct acc_hw *hw, unsigned int on)
 {
-	u8 beg = addr;
-	int err;
-	struct i2c_msg msgs[2] = { {0}, {0} };
-
-	mutex_lock(&gsensor_mutex);
-
-	msgs[0].addr = client->addr;
-	msgs[0].flags = 0;
-	msgs[0].len = 1;
-	msgs[0].buf = &beg;
-
-	msgs[1].addr = client->addr;
-	msgs[1].flags = I2C_M_RD;
-	msgs[1].len = len;
-	msgs[1].buf = data;
-
-	if (!client) {
-		mutex_unlock(&gsensor_mutex);
-		return -EINVAL;
-	} else if (len > C_I2C_FIFO_SIZE) {
-		GSE_ERR(" length %d exceeds %d\n", len, C_I2C_FIFO_SIZE);
-		mutex_unlock(&gsensor_mutex);
-		return -EINVAL;
-	}
-	err =
-	    i2c_transfer(client->adapter, msgs, sizeof(msgs) / sizeof(msgs[0]));
-	if (err != 2) {
-		GSE_ERR("i2c_transfer error: (%d %p %d) %d\n", addr, data, len,
-			err);
-		err = -EIO;
-	} else {
-		err = 0;
-	}
-	mutex_unlock(&gsensor_mutex);
-	return err;
-
+	static unsigned int power_on;
+	power_on = on;
 }
-
-EXPORT_SYMBOL(bma_i2c_read_block);
-static int bma_i2c_write_block(struct i2c_client *client, u8 addr, u8 *data,
-			       u8 len)
-{				/*because address also occupies one byte, the maximum length for write is 7 bytes */
-	int err, idx, num;
-	char buf[C_I2C_FIFO_SIZE];
-	err = 0;
-	mutex_lock(&gsensor_mutex);
-	if (!client) {
-		mutex_unlock(&gsensor_mutex);
-		return -EINVAL;
-	} else if (len >= C_I2C_FIFO_SIZE) {
-		GSE_ERR(" length %d exceeds %d\n", len, C_I2C_FIFO_SIZE);
-		mutex_unlock(&gsensor_mutex);
-		return -EINVAL;
-	}
-
-	num = 0;
-	buf[num++] = addr;
-	for (idx = 0; idx < len; idx++) {
-		buf[num++] = data[idx];
-	}
-
-	err = i2c_master_send(client, buf, num);
-	if (err < 0) {
-		GSE_ERR("send command error!!\n");
-		mutex_unlock(&gsensor_mutex);
-		return -EFAULT;
-	}
-	mutex_unlock(&gsensor_mutex);
-	return err;
-}
-
-EXPORT_SYMBOL(bma_i2c_write_block);
-
 /*----------------------------------------------------------------------------*/
-/*--------------------Add by Susan----------------------------------*/
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
-int BMA253_SCP_SetPowerMode(bool enable, int sensorType)
+
+#ifdef CUSTOM_KERNEL_SENSORHUB
+int BMA250_SCP_SetPowerMode(bool enable, int sensorType)
 {
 	static bool gsensor_scp_en_status;
 	static unsigned int gsensor_scp_en_map;
@@ -302,11 +270,10 @@ int BMA253_SCP_SetPowerMode(bool enable, int sensorType)
 		return -1;
 	}
 
-	if (true == enable) {
-		gsensor_scp_en_map |= (1 << sensorType);
-	} else {
-		gsensor_scp_en_map &= ~(1 << sensorType);
-	}
+	if (true == enable)
+		gsensor_scp_en_map |= (1<<sensorType);
+	else
+		gsensor_scp_en_map &= ~(1<<sensorType);
 
 	if (0 == gsensor_scp_en_map)
 		enable = false;
@@ -322,7 +289,7 @@ int BMA253_SCP_SetPowerMode(bool enable, int sensorType)
 		len = sizeof(req.activate_req);
 		err = SCP_sensorHub_req_send(&req, &len, 1);
 		if (err) {
-			GSE_ERR("SCP_sensorHub_req_send fail\n");
+			GSE_ERR("SCP_sensorHub_req_send fail!\n");
 		}
 	}
 
@@ -330,685 +297,903 @@ int BMA253_SCP_SetPowerMode(bool enable, int sensorType)
 
 	return err;
 }
-
-EXPORT_SYMBOL(BMA253_SCP_SetPowerMode);
+EXPORT_SYMBOL(BMA250_SCP_SetPowerMode);
 #endif
-/*----------------------------------------------------------------------------*/
-/*--------------------BMA253 power control function----------------------------------*/
-static void BMA253_power(struct acc_hw *hw, unsigned int on)
-{
-/*
-#ifdef __USE_LINUX_REGULATOR_FRAMEWORK__
-#else
-#ifndef FPGA_EARLY_PORTING
-	static unsigned int power_on;
-
-	if (hw->power_id != POWER_NONE_MACRO) {
-		GSE_LOG("power %s\n", on ? "on" : "off");
-		if (power_on == on) {
-			GSE_LOG("ignore power control: %d\n", on);
-		} else if (on) {
-			if (!hwPowerOn(hw->power_id, hw->power_vol, "BMA253")) {
-				GSE_ERR("power on fails!!\n");
-			}
-		} else {
-			if (!hwPowerDown(hw->power_id, "BMA253")) {
-				GSE_ERR("power off fail!!\n");
-			}
-		}
-	}
-	power_on = on;
-#endif
-#endif
-*/
-}
 
 /*----------------------------------------------------------------------------*/
-
-/*----------------------------------------------------------------------------*/
-static int BMA253_SetDataResolution(struct bma253_i2c_data *obj)
+static int BMA250_SetDataResolution(struct bma250_i2c_data *obj)
 {
 
 /*set g sensor dataresolution here*/
 
-/*BMA253 only can set to 10-bit dataresolution, so do nothing in bma253 driver here*/
+/*BMA250 only can set to 10-bit dataresolution, so do nothing in bma250 driver here*/
 
 /*end of set dataresolution*/
 
-	/*we set measure range from -2g to +2g in BMA253_SetDataFormat(client, BMA253_RANGE_2G),
-	   and set 10-bit dataresolution BMA253_SetDataResolution() */
 
-	/*so bma253_data_resolution[0] set value as {{ 3, 9}, 256} when declaration, and assign the value to obj->reso here */
 
-	obj->reso = &bma253_data_resolution[0];
+	/*we set measure range from -2g to +2g in BMA150_SetDataFormat(client, BMA150_RANGE_2G),
+													   and set 10-bit dataresolution BMA150_SetDataResolution()*/
+
+	/*so bma250_data_resolution[0] set value as {{ 3, 9}, 256} when declaration, and assign the value to obj->reso here*/
+
+	obj->reso = &bma250_data_resolution[0];
 	return 0;
 
-/*if you changed the measure range, for example call: BMA253_SetDataFormat(client, BMA253_RANGE_4G),
-you must set the right value to bma253_data_resolution*/
+/*if you changed the measure range, for example call: BMA250_SetDataFormat(client, BMA150_RANGE_4G),
+you must set the right value to bma250_data_resolution*/
 
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_ReadData(struct i2c_client *client, s16 data[BMA253_AXES_NUM])
+static int BMA250_ReadData(struct i2c_client *client, s16 data[BMA250_AXES_NUM])
 {
-	struct bma253_i2c_data *priv = i2c_get_clientdata(client);
+	struct bma250_i2c_data *priv = i2c_get_clientdata(client);
+	u8 addr = BMA250_REG_DATAXLOW;
+	u8 buf[BMA250_DATA_LEN] = {0};
 	int err = 0;
-#if 0
-	SCP_SENSOR_HUB_DATA req;
-	int len;
-#else
-	u8 addr = BMA253_REG_DATAXLOW;
-	u8 buf[BMA253_DATA_LEN] = { 0 };
-#endif
 
-#if 0
-	req.get_data_req.sensorType = ID_ACCELEROMETER;
-	req.get_data_req.action = SENSOR_HUB_GET_DATA;
-	len = sizeof(req.get_data_req);
-	err = SCP_sensorHub_req_send(&req, &len, 1);
-	if (err) {
-		GSE_ERR("SCP_sensorHub_req_send!\n");
+	if (NULL == client || atomic_read(&priv->suspend)) {
+		err = -EINVAL;
 		return err;
 	}
 
-	if (ID_ACCELEROMETER != req.get_data_rsp.sensorType ||
-	    SENSOR_HUB_GET_DATA != req.get_data_rsp.action ||
-	    0 != req.get_data_rsp.errCode) {
-		GSE_ERR("error : %d\n", req.get_data_rsp.errCode);
-		return req.get_data_rsp.errCode;
-	}
-
-	len -= offsetof(SCP_SENSOR_HUB_GET_DATA_RSP, int8_Data);
-
-	if (6 == len) {
-		data[BMA253_AXIS_X] = req.get_data_rsp.int16_Data[0];
-		data[BMA253_AXIS_Y] = req.get_data_rsp.int16_Data[1];
-		data[BMA253_AXIS_Z] = req.get_data_rsp.int16_Data[2];
+	err = hwmsen_read_block(client, addr, buf, 0x06);
+	if (err) {
+		GSE_ERR("error: %d\n", err);
 	} else {
-		GSE_ERR("data length fail : %d\n", len);
-	}
+		/*	data[BMA250_AXIS_X] = (s16)((buf[BMA250_AXIS_X*2] >> 6) |
+					 (buf[BMA250_AXIS_X*2+1] << 2));
+			data[BMA250_AXIS_Y] = (s16)((buf[BMA250_AXIS_Y*2] >> 6) |
+					 (buf[BMA250_AXIS_Y*2+1] << 2));
+			data[BMA250_AXIS_Z] = (s16)((buf[BMA250_AXIS_Z*2] >> 6) |
+					 (buf[BMA250_AXIS_Z*2+1] << 2));*/
 
-	if (atomic_read(&priv->trace) & ADX_TRC_RAWDATA) {
-		/*show data*/
-	}
-#endif
-	if (NULL == client) {
-		err = -EINVAL;
-	} else {
-		err = bma_i2c_read_block(client, addr, buf, 6);
-		if (err != 0) {
-			GSE_ERR("error: %d\n", err);
-		} else {
-			/* Data X */
-			data[BMA253_AXIS_X] = (s16) ((buf[0] | ((u16) buf[1] << 8)));
-			data[BMA253_AXIS_X] >>= 4;
-			/* Data Y */
-			data[BMA253_AXIS_Y] = (s16) ((buf[2] | ((u16) buf[3] << 8)));
-			data[BMA253_AXIS_Y] >>= 4;
-			/* Data Z */
-			data[BMA253_AXIS_Z] = (s16) ((buf[4] | ((u16) buf[5] << 8)));
-			data[BMA253_AXIS_Z] >>= 4;
-#if 0
-			data[BMA253_AXIS_X] = (s16) buf[BMA253_AXIS_X * 2];
-			data[BMA253_AXIS_Y] = (s16) buf[BMA253_AXIS_Y * 2];
-			data[BMA253_AXIS_Z] = (s16) buf[BMA253_AXIS_Z * 2];
-#endif
-			if (atomic_read(&priv->trace) & ADX_TRC_RAWDATA) {
-				GSE_LOG("[%08X %08X %08X] => [%5d %5d %5d] before\n",
-					data[BMA253_AXIS_X], data[BMA253_AXIS_Y],
-					data[BMA253_AXIS_Z], data[BMA253_AXIS_X],
-					data[BMA253_AXIS_Y], data[BMA253_AXIS_Z]);
-			}
-#if 0
-			if (data[BMA253_AXIS_X] & 0x80) {
-				data[BMA253_AXIS_X] = ~data[BMA253_AXIS_X];
-				data[BMA253_AXIS_X] &= 0xff;
-				data[BMA253_AXIS_X] += 1;
-				data[BMA253_AXIS_X] = -data[BMA253_AXIS_X];
-			}
-			if (data[BMA253_AXIS_Y] & 0x80) {
-				data[BMA253_AXIS_Y] = ~data[BMA253_AXIS_Y];
-				data[BMA253_AXIS_Y] &= 0xff;
-				data[BMA253_AXIS_Y] += 1;
-				data[BMA253_AXIS_Y] = -data[BMA253_AXIS_Y];
-			}
-			if (data[BMA253_AXIS_Z] & 0x80) {
-				data[BMA253_AXIS_Z] = ~data[BMA253_AXIS_Z];
-				data[BMA253_AXIS_Z] &= 0xff;
-				data[BMA253_AXIS_Z] += 1;
-				data[BMA253_AXIS_Z] = -data[BMA253_AXIS_Z];
-			}
-#endif
+		data[BMA250_AXIS_X] = (s16)(((u16)buf[BMA250_AXIS_X*2+1]) << 8 | buf[BMA250_AXIS_X*2]) >> 4;
+		data[BMA250_AXIS_Y] = (s16)(((u16)buf[BMA250_AXIS_Y*2+1]) << 8 | buf[BMA250_AXIS_Y*2]) >> 4;
+		data[BMA250_AXIS_Z] = (s16)(((u16)buf[BMA250_AXIS_Z*2+1]) << 8 | buf[BMA250_AXIS_Z*2]) >> 4;
 
-			if (atomic_read(&priv->trace) & ADX_TRC_RAWDATA) {
-				GSE_LOG("[%08X %08X %08X] => [%5d %5d %5d] after\n",
-					data[BMA253_AXIS_X], data[BMA253_AXIS_Y],
-					data[BMA253_AXIS_Z], data[BMA253_AXIS_X],
-					data[BMA253_AXIS_Y], data[BMA253_AXIS_Z]);
-			}
-#ifdef CONFIG_BMA253_LOWPASS
-			if (atomic_read(&priv->filter)) {
-				if (atomic_read(&priv->fir_en)
-				    && !atomic_read(&priv->suspend)) {
-					int idx, firlen = atomic_read(&priv->firlen);
-					if (priv->fir.num < firlen) {
-						priv->fir.raw[priv->fir.
-							      num][BMA253_AXIS_X] =
-						    data[BMA253_AXIS_X];
-						priv->fir.raw[priv->fir.
-							      num][BMA253_AXIS_Y] =
-						    data[BMA253_AXIS_Y];
-						priv->fir.raw[priv->fir.
-							      num][BMA253_AXIS_Z] =
-						    data[BMA253_AXIS_Z];
-						priv->fir.sum[BMA253_AXIS_X] +=
-						    data[BMA253_AXIS_X];
-						priv->fir.sum[BMA253_AXIS_Y] +=
-						    data[BMA253_AXIS_Y];
-						priv->fir.sum[BMA253_AXIS_Z] +=
-						    data[BMA253_AXIS_Z];
-						if (atomic_read(&priv->trace) &
-						    ADX_TRC_FILTER) {
-							GSE_LOG
-							    ("add [%2d] [%5d %5d %5d] => [%5d %5d %5d]\n",
-							     priv->fir.num,
-							     priv->fir.raw[priv->fir.
-									   num]
-							     [BMA253_AXIS_X],
-							     priv->fir.raw[priv->fir.
-									   num]
-							     [BMA253_AXIS_Y],
-							     priv->fir.raw[priv->fir.
-									   num]
-							     [BMA253_AXIS_Z],
-							     priv->fir.
-							     sum[BMA253_AXIS_X],
-							     priv->fir.
-							     sum[BMA253_AXIS_Y],
-							     priv->fir.
-							     sum[BMA253_AXIS_Z]);
-						}
-						priv->fir.num++;
-						priv->fir.idx++;
-					} else {
-						idx = priv->fir.idx % firlen;
-						priv->fir.sum[BMA253_AXIS_X] -=
-						    priv->fir.raw[idx][BMA253_AXIS_X];
-						priv->fir.sum[BMA253_AXIS_Y] -=
-						    priv->fir.raw[idx][BMA253_AXIS_Y];
-						priv->fir.sum[BMA253_AXIS_Z] -=
-						    priv->fir.raw[idx][BMA253_AXIS_Z];
-						priv->fir.raw[idx][BMA253_AXIS_X] =
-						    data[BMA253_AXIS_X];
-						priv->fir.raw[idx][BMA253_AXIS_Y] =
-						    data[BMA253_AXIS_Y];
-						priv->fir.raw[idx][BMA253_AXIS_Z] =
-						    data[BMA253_AXIS_Z];
-						priv->fir.sum[BMA253_AXIS_X] +=
-						    data[BMA253_AXIS_X];
-						priv->fir.sum[BMA253_AXIS_Y] +=
-						    data[BMA253_AXIS_Y];
-						priv->fir.sum[BMA253_AXIS_Z] +=
-						    data[BMA253_AXIS_Z];
-						priv->fir.idx++;
-						data[BMA253_AXIS_X] =
-						    priv->fir.sum[BMA253_AXIS_X] /
-						    firlen;
-						data[BMA253_AXIS_Y] =
-						    priv->fir.sum[BMA253_AXIS_Y] /
-						    firlen;
-						data[BMA253_AXIS_Z] =
-						    priv->fir.sum[BMA253_AXIS_Z] /
-						    firlen;
-						if (atomic_read(&priv->trace) &
-						    ADX_TRC_FILTER) {
-							GSE_LOG
-							    ("add [%2d] [%5d %5d %5d] => [%5d %5d %5d] : [%5d %5d %5d]\n",
-							     idx,
-							     priv->fir.
-							     raw[idx][BMA253_AXIS_X],
-							     priv->fir.
-							     raw[idx][BMA253_AXIS_Y],
-							     priv->fir.
-							     raw[idx][BMA253_AXIS_Z],
-							     priv->fir.
-							     sum[BMA253_AXIS_X],
-							     priv->fir.
-							     sum[BMA253_AXIS_Y],
-							     priv->fir.
-							     sum[BMA253_AXIS_Z],
-							     data[BMA253_AXIS_X],
-							     data[BMA253_AXIS_Y],
-							     data[BMA253_AXIS_Z]);
-						}
+		if (atomic_read(&priv->trace) & ADX_TRC_RAWDATA) {
+			GSE_LOG("[%08X %08X %08X] => [%5d %5d %5d] after\n", data[BMA250_AXIS_X], data[BMA250_AXIS_Y], data[BMA250_AXIS_Z],
+					data[BMA250_AXIS_X], data[BMA250_AXIS_Y], data[BMA250_AXIS_Z]);
+		}
+#ifdef CONFIG_BMA250_LOWPASS
+		if (atomic_read(&priv->filter)) {
+			if (atomic_read(&priv->fir_en) && !atomic_read(&priv->suspend)) {
+				int idx, firlen = atomic_read(&priv->firlen);
+				if (priv->fir.num < firlen) {
+					priv->fir.raw[priv->fir.num][BMA250_AXIS_X] = data[BMA250_AXIS_X];
+					priv->fir.raw[priv->fir.num][BMA250_AXIS_Y] = data[BMA250_AXIS_Y];
+					priv->fir.raw[priv->fir.num][BMA250_AXIS_Z] = data[BMA250_AXIS_Z];
+					priv->fir.sum[BMA250_AXIS_X] += data[BMA250_AXIS_X];
+					priv->fir.sum[BMA250_AXIS_Y] += data[BMA250_AXIS_Y];
+					priv->fir.sum[BMA250_AXIS_Z] += data[BMA250_AXIS_Z];
+					if (atomic_read(&priv->trace) & ADX_TRC_FILTER) {
+						GSE_LOG("add [%2d] [%5d %5d %5d] => [%5d %5d %5d]\n", priv->fir.num,
+								priv->fir.raw[priv->fir.num][BMA250_AXIS_X], priv->fir.raw[priv->fir.num][BMA250_AXIS_Y], priv->fir.raw[priv->fir.num][BMA250_AXIS_Z],
+								priv->fir.sum[BMA250_AXIS_X], priv->fir.sum[BMA250_AXIS_Y], priv->fir.sum[BMA250_AXIS_Z]);
+					}
+					priv->fir.num++;
+					priv->fir.idx++;
+				} else {
+					idx = priv->fir.idx % firlen;
+					priv->fir.sum[BMA250_AXIS_X] -= priv->fir.raw[idx][BMA250_AXIS_X];
+					priv->fir.sum[BMA250_AXIS_Y] -= priv->fir.raw[idx][BMA250_AXIS_Y];
+					priv->fir.sum[BMA250_AXIS_Z] -= priv->fir.raw[idx][BMA250_AXIS_Z];
+					priv->fir.raw[idx][BMA250_AXIS_X] = data[BMA250_AXIS_X];
+					priv->fir.raw[idx][BMA250_AXIS_Y] = data[BMA250_AXIS_Y];
+					priv->fir.raw[idx][BMA250_AXIS_Z] = data[BMA250_AXIS_Z];
+					priv->fir.sum[BMA250_AXIS_X] += data[BMA250_AXIS_X];
+					priv->fir.sum[BMA250_AXIS_Y] += data[BMA250_AXIS_Y];
+					priv->fir.sum[BMA250_AXIS_Z] += data[BMA250_AXIS_Z];
+					priv->fir.idx++;
+					data[BMA250_AXIS_X] = priv->fir.sum[BMA250_AXIS_X]/firlen;
+					data[BMA250_AXIS_Y] = priv->fir.sum[BMA250_AXIS_Y]/firlen;
+					data[BMA250_AXIS_Z] = priv->fir.sum[BMA250_AXIS_Z]/firlen;
+					if (atomic_read(&priv->trace) & ADX_TRC_FILTER) {
+						GSE_LOG("add [%2d] [%5d %5d %5d] => [%5d %5d %5d] : [%5d %5d %5d]\n", idx,
+								priv->fir.raw[idx][BMA250_AXIS_X], priv->fir.raw[idx][BMA250_AXIS_Y], priv->fir.raw[idx][BMA250_AXIS_Z],
+								priv->fir.sum[BMA250_AXIS_X], priv->fir.sum[BMA250_AXIS_Y], priv->fir.sum[BMA250_AXIS_Z],
+								data[BMA250_AXIS_X], data[BMA250_AXIS_Y], data[BMA250_AXIS_Z]);
 					}
 				}
 			}
+		}
 #endif
-		}
-		}
+	}
 	return err;
 }
-
 /*----------------------------------------------------------------------------*/
-
-static int BMA253_ReadOffset(struct i2c_client *client, s8 ofs[BMA253_AXES_NUM])
+static int BMA250_ReadOffset(struct i2c_client *client, s8 ofs[BMA250_AXES_NUM])
 {
-	int err;
-	err = 0;
-
+	int err = 0;
 #ifdef SW_CALIBRATION
 	ofs[0] = ofs[1] = ofs[2] = 0x0;
 #else
-err =
-	     bma_i2c_read_block(client, BMA253_REG_OFSX, ofs,
-				BMA253_AXES_NUM);
-	if (err) {
+	err = hwmsen_read_block(client, BMA250_REG_OFSX, ofs, BMA250_AXES_NUM);
+	if (err)
 		GSE_ERR("error: %d\n", err);
-	}
 #endif
 
 	return err;
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_ResetCalibration(struct i2c_client *client)
+static int BMA250_ResetCalibration(struct i2c_client *client)
 {
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
+#ifndef SW_CALIBRATION
+	u8 ofs[4] = {0, 0, 0, 0};
+#endif
 	int err = 0;
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+
+#ifdef CUSTOM_KERNEL_SENSORHUB
 	SCP_SENSOR_HUB_DATA data;
-	BMA253_CUST_DATA *pCustData;
+	BMA250_CUST_DATA *pCustData;
 	unsigned int len;
-#endif
 
-#ifdef GSENSOR_UT
-	GSE_FUN();
-#endif
-
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
 	if (0 != obj->SCP_init_done) {
-		pCustData = (BMA253_CUST_DATA *) &data.set_cust_req.custData;
-
+		pCustData = (BMA250_CUST_DATA *)&data.set_cust_req.custData;
 		data.set_cust_req.sensorType = ID_ACCELEROMETER;
 		data.set_cust_req.action = SENSOR_HUB_SET_CUST;
-		pCustData->resetCali.action = BMA253_CUST_ACTION_RESET_CALI;
-		len =
-		    offsetof(SCP_SENSOR_HUB_SET_CUST_REQ,
-			     custData) + sizeof(pCustData->resetCali);
+		pCustData->resetCali.action = BMA250_CUST_ACTION_RESET_CALI;
+		len = offsetof(SCP_SENSOR_HUB_SET_CUST_REQ, custData) + sizeof(pCustData->resetCali);
 		SCP_sensorHub_req_send(&data, &len, 1);
 	}
+#endif
+
+#ifdef SW_CALIBRATION
+
+#else
+	err = hwmsen_write_block(client, BMA250_REG_OFSX, ofs, 4);
+	if (err)
+		GSE_ERR("error: %d\n", err);
 #endif
 
 	memset(obj->cali_sw, 0x00, sizeof(obj->cali_sw));
 	memset(obj->offset, 0x00, sizeof(obj->offset));
 	return err;
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_ReadCalibration(struct i2c_client *client,
-				  int dat[BMA253_AXES_NUM])
+static int BMA250_ReadCalibration(struct i2c_client *client, int dat[BMA250_AXES_NUM])
 {
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
-	int err = 0;
-	int mul;
-
-	GSE_FUN();
-#ifdef SW_CALIBRATION
-	mul = 0;
-#else
-	err = BMA253_ReadOffset(client, obj->offset);
-	if (err) {
-		GSE_ERR("read offset fail, %d\n", err);
-		return err;
-	}
-	mul = obj->reso->sensitivity / bma253_offset_resolution.sensitivity;
-#endif
-
-	dat[obj->cvt.map[BMA253_AXIS_X]] =
-	    obj->cvt.sign[BMA253_AXIS_X] * (obj->offset[BMA253_AXIS_X] * mul +
-					    obj->cali_sw[BMA253_AXIS_X]);
-	dat[obj->cvt.map[BMA253_AXIS_Y]] =
-	    obj->cvt.sign[BMA253_AXIS_Y] * (obj->offset[BMA253_AXIS_Y] * mul +
-					    obj->cali_sw[BMA253_AXIS_Y]);
-	dat[obj->cvt.map[BMA253_AXIS_Z]] =
-	    obj->cvt.sign[BMA253_AXIS_Z] * (obj->offset[BMA253_AXIS_Z] * mul +
-					    obj->cali_sw[BMA253_AXIS_Z]);
-
-	return err;
-}
-
-/*----------------------------------------------------------------------------*/
-static int BMA253_ReadCalibrationEx(struct i2c_client *client,
-				    int act[BMA253_AXES_NUM],
-				    int raw[BMA253_AXES_NUM])
-{
-	/*raw: the raw calibration data; act: the actual calibration data */
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
+#ifndef SW_CALIBRATION
 	int err;
+#endif
 	int mul;
-	err = 0;
 
 #ifdef SW_CALIBRATION
 	mul = 0;
 #else
-	err = BMA253_ReadOffset(client, obj->offset);
+	err = BMA250_ReadOffset(client, obj->offset);
 	if (err) {
 		GSE_ERR("read offset fail, %d\n", err);
 		return err;
 	}
-	mul = obj->reso->sensitivity / bma253_offset_resolution.sensitivity;
+	mul = obj->reso->sensitivity/bma250_offset_resolution.sensitivity;
 #endif
 
-	raw[BMA253_AXIS_X] =
-	    obj->offset[BMA253_AXIS_X] * mul + obj->cali_sw[BMA253_AXIS_X];
-	raw[BMA253_AXIS_Y] =
-	    obj->offset[BMA253_AXIS_Y] * mul + obj->cali_sw[BMA253_AXIS_Y];
-	raw[BMA253_AXIS_Z] =
-	    obj->offset[BMA253_AXIS_Z] * mul + obj->cali_sw[BMA253_AXIS_Z];
-
-	act[obj->cvt.map[BMA253_AXIS_X]] =
-	    obj->cvt.sign[BMA253_AXIS_X] * raw[BMA253_AXIS_X];
-	act[obj->cvt.map[BMA253_AXIS_Y]] =
-	    obj->cvt.sign[BMA253_AXIS_Y] * raw[BMA253_AXIS_Y];
-	act[obj->cvt.map[BMA253_AXIS_Z]] =
-	    obj->cvt.sign[BMA253_AXIS_Z] * raw[BMA253_AXIS_Z];
+	dat[obj->cvt.map[BMA250_AXIS_X]] = obj->cvt.sign[BMA250_AXIS_X]*(obj->offset[BMA250_AXIS_X]*mul * GRAVITY_EARTH_1000 / obj->reso->sensitivity + obj->cali_sw[BMA250_AXIS_X]);
+	dat[obj->cvt.map[BMA250_AXIS_Y]] = obj->cvt.sign[BMA250_AXIS_Y]*(obj->offset[BMA250_AXIS_Y]*mul * GRAVITY_EARTH_1000 / obj->reso->sensitivity + obj->cali_sw[BMA250_AXIS_Y]);
+	dat[obj->cvt.map[BMA250_AXIS_Z]] = obj->cvt.sign[BMA250_AXIS_Z]*(obj->offset[BMA250_AXIS_Z]*mul * GRAVITY_EARTH_1000 / obj->reso->sensitivity + obj->cali_sw[BMA250_AXIS_Z]);
 
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_WriteCalibration(struct i2c_client *client,
-				   int dat[BMA253_AXES_NUM])
+static int BMA250_ReadCalibrationEx(struct i2c_client *client, int act[BMA250_AXES_NUM], int raw[BMA250_AXES_NUM])
 {
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
-	int err = 0;
-	int cali[BMA253_AXES_NUM], raw[BMA253_AXES_NUM];
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+	/*raw: the raw calibration data; act: the actual calibration data*/
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
+#ifndef SW_CALIBRATION
+	int err;
+#endif
+	int mul;
+
+#ifdef SW_CALIBRATION
+	mul = 0;
+#else
+	err = BMA250_ReadOffset(client, obj->offset);
+	if (err) {
+		GSE_ERR("read offset fail, %d\n", err);
+		return err;
+	}
+	mul = obj->reso->sensitivity/bma250_offset_resolution.sensitivity;
+#endif
+
+	raw[BMA250_AXIS_X] = obj->offset[BMA250_AXIS_X]*mul * GRAVITY_EARTH_1000 / obj->reso->sensitivity + obj->cali_sw[BMA250_AXIS_X];
+	raw[BMA250_AXIS_Y] = obj->offset[BMA250_AXIS_Y]*mul * GRAVITY_EARTH_1000 / obj->reso->sensitivity + obj->cali_sw[BMA250_AXIS_Y];
+	raw[BMA250_AXIS_Z] = obj->offset[BMA250_AXIS_Z]*mul * GRAVITY_EARTH_1000 / obj->reso->sensitivity + obj->cali_sw[BMA250_AXIS_Z];
+
+	act[obj->cvt.map[BMA250_AXIS_X]] = obj->cvt.sign[BMA250_AXIS_X]*raw[BMA250_AXIS_X];
+	act[obj->cvt.map[BMA250_AXIS_Y]] = obj->cvt.sign[BMA250_AXIS_Y]*raw[BMA250_AXIS_Y];
+	act[obj->cvt.map[BMA250_AXIS_Z]] = obj->cvt.sign[BMA250_AXIS_Z]*raw[BMA250_AXIS_Z];
+
+	return 0;
+}
+/*----------------------------------------------------------------------------*/
+static int BMA250_WriteCalibration(struct i2c_client *client, int dat[BMA250_AXES_NUM])
+{
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
+	int err;
+	int cali[BMA250_AXES_NUM] = {0};
+	int raw[BMA250_AXES_NUM] = {0};
+#ifndef SW_CALIBRATION
+	int lsb = bma250_offset_resolution.sensitivity;
+	int divisor = obj->reso->sensitivity/lsb;
+#endif
+
+#ifdef CUSTOM_KERNEL_SENSORHUB
 	SCP_SENSOR_HUB_DATA data;
-	BMA253_CUST_DATA *pCustData;
+	BMA250_CUST_DATA *pCustData;
 	unsigned int len;
 #endif
-	err = BMA253_ReadCalibrationEx(client, cali, raw);
-	if (0 != err) {	/*offset will be updated in obj->offset */
+
+	err = BMA250_ReadCalibrationEx(client, cali, raw);
+	if (err) { /*offset will be updated in obj->offset*/
 		GSE_ERR("read offset fail, %d\n", err);
 		return err;
 	}
 
-	GSE_LOG
-	    ("OLDOFF: (%+3d %+3d %+3d): (%+3d %+3d %+3d) / (%+3d %+3d %+3d)\n",
-	     raw[BMA253_AXIS_X], raw[BMA253_AXIS_Y], raw[BMA253_AXIS_Z],
-	     obj->offset[BMA253_AXIS_X], obj->offset[BMA253_AXIS_Y],
-	     obj->offset[BMA253_AXIS_Z], obj->cali_sw[BMA253_AXIS_X],
-	     obj->cali_sw[BMA253_AXIS_Y], obj->cali_sw[BMA253_AXIS_Z]);
+	GSE_LOG("OLDOFF: (%+3d %+3d %+3d): (%+3d %+3d %+3d) / (%+3d %+3d %+3d)\n",
+			raw[BMA250_AXIS_X], raw[BMA250_AXIS_Y], raw[BMA250_AXIS_Z],
+			obj->offset[BMA250_AXIS_X], obj->offset[BMA250_AXIS_Y], obj->offset[BMA250_AXIS_Z],
+			obj->cali_sw[BMA250_AXIS_X], obj->cali_sw[BMA250_AXIS_Y], obj->cali_sw[BMA250_AXIS_Z]);
 
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	pCustData = (BMA253_CUST_DATA *) data.set_cust_req.custData;
+#ifdef CUSTOM_KERNEL_SENSORHUB
+	pCustData = (BMA250_CUST_DATA *)data.set_cust_req.custData;
 	data.set_cust_req.sensorType = ID_ACCELEROMETER;
 	data.set_cust_req.action = SENSOR_HUB_SET_CUST;
-	pCustData->setCali.action = BMA253_CUST_ACTION_SET_CALI;
-	pCustData->setCali.data[BMA253_AXIS_X] = dat[BMA253_AXIS_X];
-	pCustData->setCali.data[BMA253_AXIS_Y] = dat[BMA253_AXIS_Y];
-	pCustData->setCali.data[BMA253_AXIS_Z] = dat[BMA253_AXIS_Z];
-	len =
-	    offsetof(SCP_SENSOR_HUB_SET_CUST_REQ,
-		     custData) + sizeof(pCustData->setCali);
+	pCustData->setCali.action = BMA250_CUST_ACTION_SET_CALI;
+	pCustData->setCali.data[BMA250_AXIS_X] = dat[BMA250_AXIS_X];
+	pCustData->setCali.data[BMA250_AXIS_Y] = dat[BMA250_AXIS_Y];
+	pCustData->setCali.data[BMA250_AXIS_Z] = dat[BMA250_AXIS_Z];
+	len = offsetof(SCP_SENSOR_HUB_SET_CUST_REQ, custData) + sizeof(pCustData->setCali);
 	SCP_sensorHub_req_send(&data, &len, 1);
 #endif
 
-	/*calculate the real offset expected by caller */
-	cali[BMA253_AXIS_X] += dat[BMA253_AXIS_X];
-	cali[BMA253_AXIS_Y] += dat[BMA253_AXIS_Y];
-	cali[BMA253_AXIS_Z] += dat[BMA253_AXIS_Z];
+	/*calculate the real offset expected by caller*/
+	cali[BMA250_AXIS_X] += dat[BMA250_AXIS_X];
+	cali[BMA250_AXIS_Y] += dat[BMA250_AXIS_Y];
+	cali[BMA250_AXIS_Z] += dat[BMA250_AXIS_Z];
 
 	GSE_LOG("UPDATE: (%+3d %+3d %+3d)\n",
-		dat[BMA253_AXIS_X], dat[BMA253_AXIS_Y], dat[BMA253_AXIS_Z]);
+			dat[BMA250_AXIS_X], dat[BMA250_AXIS_Y], dat[BMA250_AXIS_Z]);
 
 #ifdef SW_CALIBRATION
-	obj->cali_sw[BMA253_AXIS_X] =
-	    obj->cvt.sign[BMA253_AXIS_X] * (cali[obj->cvt.map[BMA253_AXIS_X]]);
-	obj->cali_sw[BMA253_AXIS_Y] =
-	    obj->cvt.sign[BMA253_AXIS_Y] * (cali[obj->cvt.map[BMA253_AXIS_Y]]);
-	obj->cali_sw[BMA253_AXIS_Z] =
-	    obj->cvt.sign[BMA253_AXIS_Z] * (cali[obj->cvt.map[BMA253_AXIS_Z]]);
+	obj->cali_sw[BMA250_AXIS_X] = obj->cvt.sign[BMA250_AXIS_X]*(cali[obj->cvt.map[BMA250_AXIS_X]]);
+	obj->cali_sw[BMA250_AXIS_Y] = obj->cvt.sign[BMA250_AXIS_Y]*(cali[obj->cvt.map[BMA250_AXIS_Y]]);
+	obj->cali_sw[BMA250_AXIS_Z] = obj->cvt.sign[BMA250_AXIS_Z]*(cali[obj->cvt.map[BMA250_AXIS_Z]]);
 #else
-	int divisor = obj->reso->sensitivity / lsb;
-	obj->offset[BMA253_AXIS_X] =
-	    (s8) (obj->cvt.sign[BMA253_AXIS_X] *
-		  (cali[obj->cvt.map[BMA253_AXIS_X]]) / (divisor));
-	obj->offset[BMA253_AXIS_Y] =
-	    (s8) (obj->cvt.sign[BMA253_AXIS_Y] *
-		  (cali[obj->cvt.map[BMA253_AXIS_Y]]) / (divisor));
-	obj->offset[BMA253_AXIS_Z] =
-	    (s8) (obj->cvt.sign[BMA253_AXIS_Z] *
-		  (cali[obj->cvt.map[BMA253_AXIS_Z]]) / (divisor));
+	obj->offset[BMA250_AXIS_X] = (s8)(obj->cvt.sign[BMA250_AXIS_X]*(cali[obj->cvt.map[BMA250_AXIS_X]]) * obj->reso->sensitivity / GRAVITY_EARTH_1000/(divisor));
+	obj->offset[BMA250_AXIS_Y] = (s8)(obj->cvt.sign[BMA250_AXIS_Y]*(cali[obj->cvt.map[BMA250_AXIS_Y]]) * obj->reso->sensitivity / GRAVITY_EARTH_1000/(divisor));
+	obj->offset[BMA250_AXIS_Z] = (s8)(obj->cvt.sign[BMA250_AXIS_Z]*(cali[obj->cvt.map[BMA250_AXIS_Z]]) * obj->reso->sensitivity / GRAVITY_EARTH_1000/(divisor));
 
-	/*convert software calibration using standard calibration */
-	obj->cali_sw[BMA253_AXIS_X] =
-	    obj->cvt.sign[BMA253_AXIS_X] * (cali[obj->cvt.map[BMA253_AXIS_X]]) %
-	    (divisor);
-	obj->cali_sw[BMA253_AXIS_Y] =
-	    obj->cvt.sign[BMA253_AXIS_Y] * (cali[obj->cvt.map[BMA253_AXIS_Y]]) %
-	    (divisor);
-	obj->cali_sw[BMA253_AXIS_Z] =
-	    obj->cvt.sign[BMA253_AXIS_Z] * (cali[obj->cvt.map[BMA253_AXIS_Z]]) %
-	    (divisor);
+	/*convert software calibration using standard calibration*/
+	obj->cali_sw[BMA250_AXIS_X] = obj->cvt.sign[BMA250_AXIS_X]*(cali[obj->cvt.map[BMA250_AXIS_X]])%(divisor);
+	obj->cali_sw[BMA250_AXIS_Y] = obj->cvt.sign[BMA250_AXIS_Y]*(cali[obj->cvt.map[BMA250_AXIS_Y]])%(divisor);
+	obj->cali_sw[BMA250_AXIS_Z] = obj->cvt.sign[BMA250_AXIS_Z]*(cali[obj->cvt.map[BMA250_AXIS_Z]])%(divisor);
 
-	GSE_LOG
-	    ("NEWOFF: (%+3d %+3d %+3d): (%+3d %+3d %+3d) / (%+3d %+3d %+3d)\n",
-	     obj->offset[BMA253_AXIS_X] * divisor + obj->cali_sw[BMA253_AXIS_X],
-	     obj->offset[BMA253_AXIS_Y] * divisor + obj->cali_sw[BMA253_AXIS_Y],
-	     obj->offset[BMA253_AXIS_Z] * divisor + obj->cali_sw[BMA253_AXIS_Z],
-	     obj->offset[BMA253_AXIS_X], obj->offset[BMA253_AXIS_Y],
-	     obj->offset[BMA253_AXIS_Z], obj->cali_sw[BMA253_AXIS_X],
-	     obj->cali_sw[BMA253_AXIS_Y], obj->cali_sw[BMA253_AXIS_Z]);
+	GSE_LOG("NEWOFF: (%+3d %+3d %+3d): (%+3d %+3d %+3d) / (%+3d %+3d %+3d)\n",
+			obj->offset[BMA250_AXIS_X]*divisor + obj->cali_sw[BMA250_AXIS_X],
+			obj->offset[BMA250_AXIS_Y]*divisor + obj->cali_sw[BMA250_AXIS_Y],
+			obj->offset[BMA250_AXIS_Z]*divisor + obj->cali_sw[BMA250_AXIS_Z],
+			obj->offset[BMA250_AXIS_X], obj->offset[BMA250_AXIS_Y], obj->offset[BMA250_AXIS_Z],
+			obj->cali_sw[BMA250_AXIS_X], obj->cali_sw[BMA250_AXIS_Y], obj->cali_sw[BMA250_AXIS_Z]);
 
-	    err =
-	     hwmsen_write_block(obj->client, BMA253_REG_OFSX, obj->offset,
-				BMA253_AXES_NUM);
+	err = hwmsen_write_block(obj->client, BMA250_REG_OFSX, obj->offset, BMA250_AXES_NUM);
 	if (err) {
 		GSE_ERR("write offset fail: %d\n", err);
 		return err;
 	}
 #endif
-	mdelay(1);
+
 	return err;
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_CheckDeviceID(struct i2c_client *client)
+static int BMA250_CheckDeviceID(struct i2c_client *client)
 {
-	u8 databuf[2] = { 0 };
-	int res = 0;
-
-	res = bma_i2c_read_block(client, BMA253_REG_DEVID, databuf, 0x1);
-	if (res < 0) {
-		goto exit_BMA253_CheckDeviceID;
-	}
-
-	GSE_LOG("BMA253_CheckDeviceID %d done!\n ", databuf[0]);
-
-      exit_BMA253_CheckDeviceID:
-	if (res < 0) {
-		GSE_ERR("BMA253_CheckDeviceID %d failt!\n ", BMA253_ERR_I2C);
-		return BMA253_ERR_I2C;
-	}
-	mdelay(1);
-	return BMA253_SUCCESS;
-}
-
-/*----------------------------------------------------------------------------*/
-static int BMA253_SetPowerMode(struct i2c_client *client, bool enable)
-{
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
-	int res = 0;
-
 	u8 databuf[2];
-	u8 addr = BMA253_REG_POWER_CTL;
+	int res = 0;
 
-	if (enable == sensor_power) {
-		GSE_LOG("Sensor power status is newest!\n");
-		return BMA253_SUCCESS;
+	memset(databuf, 0, sizeof(u8)*2);
+	databuf[0] = BMA250_REG_DEVID;
+	i2c_master_send(client, databuf, 0x1);
+	mdelay(40);
+
+	databuf[0] = 0x0;
+	res = i2c_master_recv(client, databuf, 0x01);
+	if (res <= 0) {
+		i2c_master_send(client, databuf, 0x1);
+
+		mdelay(40);
+
+		databuf[0] = 0x0;
+		res = i2c_master_recv(client, databuf, 0x01);
+		if (res <= 0) {
+			goto exit_BMA250_CheckDeviceID;
+		}
 	}
 
-	if (bma_i2c_read_block(client, addr, databuf, 0x01)) {
-		GSE_ERR("read power ctl register err!\n");
-		return BMA253_ERR_I2C;
-	}
-	GSE_LOG("set power mode value = 0x%x!\n", databuf[0]);
-	mdelay(1);
-	if (enable) {
-		databuf[0] &= ~BMA253_MEASURE_MODE;
+	if (databuf[0] == BMA250_FIXED_DEVID) {
+		GSE_LOG("BMA250_CheckDeviceID %4xh pass!\n ", databuf[0]);
+		bma250_revesion = BMA250;
+	} else if (databuf[0] == BMA250E_FIXED_DEVID) {
+		GSE_LOG("BMA253_CheckDeviceID %4xh pass!\n ", databuf[0]);
+		bma250_revesion = BMA250E;
 	} else {
-		databuf[0] |= BMA253_MEASURE_MODE;
+		GSE_ERR("BMA253_CheckDeviceID %d fail!\n ", databuf[0]);
 	}
 
-	res = bma_i2c_write_block(client, BMA253_REG_POWER_CTL, databuf, 0x1);
+	exit_BMA250_CheckDeviceID:
+	if (res <= 0) {
+		return BMA250_ERR_I2C;
+	}
+
+	return BMA250_SUCCESS;
+}
+
+#if GSENSOR_CALI
+static int readcali(void *unused)
+{
+	int err = 0;
+	struct bma250_i2c_data *obj = obj_i2c_data;
+	while (err != 1) {
+		msleep(2000);
+		err = fih_read_gsensor_cali(&partition_calidata);
+	}
+	obj->cali_sw[0] = partition_calidata.cali_x;
+	obj->cali_sw[1] = partition_calidata.cali_y;
+	obj->cali_sw[2] = partition_calidata.cali_z;
+	printk("FQ Use calibration data for gsensor %d %d %d %d \n", obj->cali_sw[0], obj->cali_sw[1], obj->cali_sw[2], err);
+	return 0;
+}
+#endif
+
+/*----------------------------------------------------------------------------*/
+static int BMA250_SetPowerMode(struct i2c_client *client, int enable)
+{
+	u8 databuf[2] = {0};
+	int res = 0;
+	u8 temp, temp0, temp1;
+	u8 actual_power_mode = 0;
+	int count = 0;
+	static int num_record;
+	if ((enable == sensor_power) && (num_record)) {
+		GSE_LOG("Sensor power status is newest!\n");
+		return BMA250_SUCCESS;
+	}
+	num_record = 0;
+	num_record++;
+	if (enable == true)
+		actual_power_mode = BMA250_MODE_NORMAL;
+	else
+		actual_power_mode = BMA250_MODE_SUSPEND;
+
+	res = hwmsen_read_block(client, 0x3E, &temp, 0x1);
+	udelay(1000);
+	count++;
+	while ((count < 3) && (res < 0)) {
+		res = hwmsen_read_block(client, 0x3E, &temp, 0x1);
+		udelay(1000);
+		count++;
+	}
+	if (res < 0)
+		GSE_ERR("read  config failed!\n");
+	switch (actual_power_mode) {
+	case BMA250_MODE_NORMAL:
+		databuf[0] = 0x00;
+		databuf[1] = 0x00;
+		while (count < 10) {
+			res = hwmsen_write_block(client,
+				BMA250_REG_POWER_CTL, &databuf[0], 1);
+			udelay(1000);
+			if (res < 0)
+				GSE_LOG("write MODE_CTRL_REG failed!\n");
+			res = hwmsen_write_block(client,
+				BMA250_LOW_POWER_CTRL_REG, &databuf[1], 1);
+			udelay(2000);
+			if (res < 0)
+				GSE_LOG("write LOW_POWER_CTRL_REG failed!\n");
+			res = hwmsen_read_block(client,
+				BMA250_REG_POWER_CTL, &temp0, 0x1);
+			if (res < 0)
+				GSE_LOG("read MODE_CTRL_REG failed!\n");
+			res = hwmsen_read_block(client,
+				BMA250_LOW_POWER_CTRL_REG, &temp1, 0x1);
+			if (res < 0)
+				GSE_LOG("read LOW_POWER_CTRL_REG failed!\n");
+			if (temp0 != databuf[0]) {
+				GSE_LOG("readback MODE_CTRL failed!\n");
+				count++;
+				continue;
+			} else if (temp1 != databuf[1]) {
+				GSE_LOG("readback LOW_POWER_CTRL failed!\n");
+				count++;
+				continue;
+			} else {
+				GSE_LOG("configure powermode success\n");
+				break;
+			}
+		}
+		udelay(1000);
+		break;
+	case BMA250_MODE_SUSPEND:
+		databuf[0] = 0x80;
+		databuf[1] = 0x00;
+		while (count < 10) {
+			res = hwmsen_write_block(client,
+				BMA250_LOW_POWER_CTRL_REG, &databuf[1], 1);
+			udelay(1000);
+			if (res < 0)
+				GSE_LOG("write LOW_POWER_CTRL_REG failed!\n");
+			res = hwmsen_write_block(client,
+				BMA250_REG_POWER_CTL, &databuf[0], 1);
+			udelay(1000);
+			res = hwmsen_write_block(client, 0x3E, &temp, 0x1);
+			if (res < 0)
+				GSE_LOG("write  config failed!\n");
+			udelay(1000);
+			res = hwmsen_write_block(client, 0x3E, &temp, 0x1);
+			if (res < 0)
+				GSE_LOG("write  config failed!\n");
+			udelay(2000);
+			res = hwmsen_read_block(client,
+				BMA250_REG_POWER_CTL, &temp0, 0x1);
+			if (res < 0)
+				GSE_LOG("read BMA250_MODE_CTRL_REG failed!\n");
+			res = hwmsen_read_block(client,
+				BMA250_LOW_POWER_CTRL_REG, &temp1, 0x1);
+			if (res < 0)
+				GSE_LOG("read BLOW_POWER_CTRL_REG failed!\n");
+			if (temp0 != databuf[0]) {
+				GSE_LOG("readback MODE_CTRL failed!\n");
+				count++;
+				continue;
+			} else if (temp1 != databuf[1]) {
+				GSE_LOG("readback LOW_POWER_CTRL failed!\n");
+				count++;
+				continue;
+			} else {
+				GSE_LOG("configure powermode success\n");
+				break;
+			}
+		}
+		udelay(1000);
+	break;
+	}
+
 	if (res < 0) {
-		GSE_LOG("set power mode failed!\n");
-		return BMA253_ERR_I2C;
-	} else if (atomic_read(&obj->trace) & ADX_TRC_INFO) {
-		GSE_LOG("set power mode ok %d!\n", databuf[1]);
+		GSE_ERR("set power mode failed, res = %d\n", res);
+		return BMA250_ERR_I2C;
 	}
-
 	sensor_power = enable;
-	mdelay(1);
-	return BMA253_SUCCESS;
+	return BMA250_SUCCESS;
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_SetDataFormat(struct i2c_client *client, u8 dataformat)
+static int BMA250_SetDataFormat(struct i2c_client *client, u8 dataformat)
 {
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
-	u8 databuf[10] = { 0 };
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
+	u8 databuf[10], databuf1[2] = {0};
 	int res = 0;
 
-	if (bma_i2c_read_block(client, BMA253_REG_DATA_FORMAT, databuf, 0x01)) {
-		printk("bma253 read Dataformat failt \n");
-		return BMA253_ERR_I2C;
+	memset(databuf, 0, sizeof(u8)*10);
+
+	if (hwmsen_read_block(client, BMA250_REG_DATA_FORMAT, databuf, 0x01)) {
+		GSE_ERR("bma250 read Dataformat failt \n");
+		return BMA250_ERR_I2C;
 	}
-	mdelay(1);
-	databuf[0] &= ~BMA253_RANGE_MASK;
+
+	databuf[0] &= ~BMA250_RANGE_MASK;
 	databuf[0] |= dataformat;
+	databuf[1] = databuf[0];
+	databuf[0] = BMA250_REG_DATA_FORMAT;
 
-	res = bma_i2c_write_block(client, BMA253_REG_DATA_FORMAT, databuf, 0x1);
-	if (res < 0) {
-		return BMA253_ERR_I2C;
-	}
+	printk("gsensor write register 0x0f data:0x%x\n", databuf[1]);
+
+	res = i2c_master_send(client, databuf, 0x2);
 	mdelay(1);
-	return BMA253_SetDataResolution(obj);
-}
+	if (res <= 0) {
+		return BMA250_ERR_I2C;
+	}
 
+	if (hwmsen_read_block(client, BMA250_REG_DATA_FORMAT, databuf1, 0x01)) {
+		GSE_ERR("bma250 read Dataformat failt \n");
+		return BMA250_ERR_I2C;
+	} else {
+		printk("gsensor read register 0x0f data:0x%x\n", databuf1[0]);
+		if (databuf1[0] != dataformat) {
+			res = i2c_master_send(client, databuf, 0x2);
+			mdelay(1);
+			if (res <= 0) {
+				return BMA250_ERR_I2C;
+			}
+			printk("gsensor set 0x0f register again!\n");
+		}
+	}
+
+	return BMA250_SetDataResolution(obj);
+}
 /*----------------------------------------------------------------------------*/
-static int BMA253_SetBWRate(struct i2c_client *client, u8 bwrate)
+static int BMA250_SetBWRate(struct i2c_client *client, u8 bwrate)
 {
-	u8 databuf[10] = { 0 };
+	u8 databuf[10];
 	int res = 0;
 
-	if (bma_i2c_read_block(client, BMA253_REG_BW_RATE, databuf, 0x01)) {
-		printk("bma253 read rate failt \n");
-		return BMA253_ERR_I2C;
+	memset(databuf, 0, sizeof(u8)*10);
+
+	if (hwmsen_read_block(client, BMA250_REG_BW_RATE, databuf, 0x01)) {
+		GSE_ERR("bma250 read rate failt \n");
+		return BMA250_ERR_I2C;
 	}
-	mdelay(1);
-	databuf[0] &= ~BMA253_BW_MASK;
+
+	databuf[0] &= ~BMA250_BW_MASK;
 	databuf[0] |= bwrate;
+	databuf[1] = databuf[0];
+	databuf[0] = BMA250_REG_BW_RATE;
 
-	res = bma_i2c_write_block(client, BMA253_REG_BW_RATE, databuf, 0x1);
-	if (res < 0) {
-		return BMA253_ERR_I2C;
-	}
+
+	res = i2c_master_send(client, databuf, 0x2);
 	mdelay(1);
+	if (res <= 0) {
+		return BMA250_ERR_I2C;
+	}
 
-	return BMA253_SUCCESS;
+	/*GSE_LOG("BMA250_SetBWRate OK! \n");*/
+
+	return BMA250_SUCCESS;
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_SetIntEnable(struct i2c_client *client, u8 intenable)
+static int BMA250_SetIntEnable(struct i2c_client *client, u8 intenable)
 {
 	int res = 0;
 
-	res = hwmsen_write_byte(client, BMA253_INT_REG_1, 0x00);
-	if (res != BMA253_SUCCESS) {
-		return res;
-	}
+	res = hwmsen_write_byte(client, BMA250_INT_REG_1, 0x00);
 	mdelay(1);
-	res = hwmsen_write_byte(client, BMA253_INT_REG_2, 0x00);
-	if (res != BMA253_SUCCESS) {
+	if (res != BMA250_SUCCESS) {
 		return res;
 	}
+	res = hwmsen_write_byte(client, BMA250_INT_REG_2, 0x00);
+	mdelay(1);
+	if (res != BMA250_SUCCESS) {
+		return res;
+	}
+	GSE_LOG("BMA250 disable interrupt ...\n");
 
-	/*for disable interrupt function */
-	mdelay(1);
-	return BMA253_SUCCESS;
+	/*for disable interrupt function*/
+
+	return BMA250_SUCCESS;
+}
+
+static int acc_store_offset_in_file(const char *filename,
+s16 *offset, int data_valid)
+{
+	struct file *cali_file;
+	char w_buf[BMA250_DATA_BUF_NUM*sizeof(s16)*2+1] = {0};
+	char r_buf[BMA250_DATA_BUF_NUM*sizeof(s16)*2+1] = {0};
+	int i;
+	char *dest = w_buf;
+	mm_segment_t fs;
+
+	cali_file = filp_open(filename, O_CREAT | O_RDWR, 0777);
+	if (IS_ERR(cali_file)) {
+		GSE_LOG("open error! exit!\n");
+		return -1;
+	}
+	fs = get_fs();
+	set_fs(get_ds());
+	for (i = 0; i < BMA250_DATA_BUF_NUM; i++) {
+		sprintf(dest, "%02X", offset[i]&0x00FF);
+		dest += 2;
+		sprintf(dest, "%02X", (offset[i] >> 8)&0x00FF);
+		dest += 2;
+		};
+	GSE_LOG("w_buf: %s\n", w_buf);
+	vfs_write(cali_file, (void *)w_buf,
+	BMA250_DATA_BUF_NUM*sizeof(s16)*2, &cali_file->f_pos);
+	cali_file->f_pos = 0x00;
+	vfs_read(cali_file, (void *)r_buf,
+	BMA250_DATA_BUF_NUM*sizeof(s16)*2, &cali_file->f_pos);
+	for (i = 0; i < BMA250_DATA_BUF_NUM*sizeof(s16)*2; i++) {
+		if (r_buf[i] != w_buf[i]) {
+			filp_close(cali_file, NULL);
+			GSE_LOG("read back error! exit!\n");
+			return -1;
+		}
+	}
+	set_fs(fs);
+
+	filp_close(cali_file, NULL);
+	GSE_LOG("store_offset_in_file ok exit\n");
+	return 0;
 }
 
 /*----------------------------------------------------------------------------*/
-static int bma253_init_client(struct i2c_client *client, int reset_cali)
+static int bma250_init_client(struct i2c_client *client, int reset_cali)
 {
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
 	int res = 0;
 
-	GSE_FUN();
+	GSE_LOG("bma250_init_client \n");
 
-	res = BMA253_CheckDeviceID(client);
-	if (res != BMA253_SUCCESS) {
+	res = BMA250_SetPowerMode(client, true);
+	if (res != BMA250_SUCCESS) {
 		return res;
 	}
-	/*printk("BMA253_CheckDeviceID ok \n");*/
+	GSE_LOG("BMA250_SetPowerMode to normal OK!\n");
 
-	res = BMA253_SetBWRate(client, BMA253_BW_100HZ);
-	if (res != BMA253_SUCCESS) {
+	res = BMA250_CheckDeviceID(client);
+	if (res != BMA250_SUCCESS) {
 		return res;
 	}
-	/*printk("BMA253_SetBWRate OK!\n");*/
+	GSE_LOG("BMA250_CheckDeviceID ok \n");
 
-	res = BMA253_SetDataFormat(client, BMA253_RANGE_2G);
-	if (res != BMA253_SUCCESS) {
+	res = BMA250_SetBWRate(client, BMA250_BW_100HZ);
+	if (res != BMA250_SUCCESS) {
 		return res;
 	}
-	/*printk("BMA253_SetDataFormat OK!\n");*/
+	GSE_LOG("BMA250_SetBWRate OK!\n");
 
-	gsensor_gain.x = gsensor_gain.y = gsensor_gain.z =
-	    obj->reso->sensitivity;
+	res = BMA250_SetDataFormat(client, BMA250_RANGE_2G);
+	if (res != BMA250_SUCCESS) {
+		return res;
+	}
+	GSE_LOG("BMA250_SetDataFormat OK!\n");
 
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+	gsensor_gain.x = gsensor_gain.y = gsensor_gain.z = obj->reso->sensitivity;
+
+
+#ifdef CUSTOM_KERNEL_SENSORHUB
 	res = gsensor_setup_irq();
-	if (res != BMA253_SUCCESS) {
+	if (res != BMA250_SUCCESS) {
 		return res;
 	}
 #endif
-
-	res = BMA253_SetIntEnable(client, 0x00);
-	if (res != BMA253_SUCCESS) {
+	res = BMA250_SetIntEnable(client, 0x00);
+	if (res != BMA250_SUCCESS) {
 		return res;
 	}
+	GSE_LOG("BMA250 disable interrupt function!\n");
 
-	res = BMA253_SetPowerMode(client, enable_status);
-	if (res != BMA253_SUCCESS) {
+	res = BMA250_SetPowerMode(client, false);
+	if (res != BMA250_SUCCESS) {
 		return res;
 	}
+	GSE_LOG("BMA250_SetPowerMode OK!\n");
+
 
 	if (0 != reset_cali) {
-		/*reset calibration only in power on */
-		res = BMA253_ResetCalibration(client);
-		if (res != BMA253_SUCCESS) {
+		/*reset calibration only in power on*/
+		res = BMA250_ResetCalibration(client);
+		if (res != BMA250_SUCCESS) {
 			return res;
 		}
 	}
-	GSE_LOG("bma253_init_client OK!\n");
-#ifdef CONFIG_BMA253_LOWPASS
+	GSE_LOG("bma250_init_client OK!\n");
+#ifdef CONFIG_BMA250_LOWPASS
 	memset(&obj->fir, 0x00, sizeof(obj->fir));
 #endif
-	return BMA253_SUCCESS;
+
+	mdelay(20);
+
+	return BMA250_SUCCESS;
+}
+
+#if GSENSOR_CALI
+static int gsensor_calibration(void)
+{
+	struct i2c_client *client = bma250_i2c_client;
+	struct bma250_i2c_data *obj;
+	struct manuf_gsensor_cali temp;
+	char strbuf[BMA250_BUFSIZE];
+	int data[3] = {0, 0, 0};
+	int avg[3] = {0, 0, 0};
+	int cali[3] = {0, 0, 0};
+	int golden_x = 0;
+	int golden_y = 0;
+	int golden_z = -9800;
+	int cali_last[3] = {0, 0, 0};
+	int err = -1, num = 0, count = 5;
+
+	if (NULL == client) {
+		GSE_ERR("i2c client is null!!\n");
+		return 0;
+	}
+
+	obj = i2c_get_clientdata(client);
+	obj->cali_sw[BMA250_AXIS_X] = 0;
+	obj->cali_sw[BMA250_AXIS_Y] = 0;
+	obj->cali_sw[BMA250_AXIS_Z] = 0;
+
+	while (num < count) {
+
+		mdelay(20);
+
+		/* read gsensor data */
+		err = BMA250_ReadSensorData(client, strbuf, BMA250_BUFSIZE);
+
+		if (err) {
+			GSE_ERR("read data fail: %d\n", err);
+			return 0;
+		}
+
+		sscanf(strbuf, "%x %x %x", &data[BMA250_AXIS_X],
+		&data[BMA250_AXIS_Y], &data[BMA250_AXIS_Z]);
+
+		if (data[BMA250_AXIS_Z] > 8500)
+			golden_z = 9800;
+		else if (data[BMA250_AXIS_Z] < -8500)
+			golden_z = -9800;
+		else
+			return 0;
+
+		avg[BMA250_AXIS_X] = data[BMA250_AXIS_X] + avg[BMA250_AXIS_X] ;
+		avg[BMA250_AXIS_Y] = data[BMA250_AXIS_Y] + avg[BMA250_AXIS_Y];
+		avg[BMA250_AXIS_Z] = data[BMA250_AXIS_Z] + avg[BMA250_AXIS_Z];
+
+		num++;
+
+	}
+
+	avg[BMA250_AXIS_X] /= count;
+	avg[BMA250_AXIS_Y] /= count;
+	avg[BMA250_AXIS_Z] /= count;
+
+	cali[BMA250_AXIS_X] = golden_x - avg[BMA250_AXIS_X];
+	cali[BMA250_AXIS_Y] = golden_y - avg[BMA250_AXIS_Y];
+	cali[BMA250_AXIS_Z] = golden_z - avg[BMA250_AXIS_Z];
+
+	GSE_LOG("FQ cali data1 = %d %d %d\n", cali[BMA250_AXIS_X], cali[BMA250_AXIS_Y], cali[BMA250_AXIS_Z]);
+
+	cali_last[0] = cali[BMA250_AXIS_X];
+	cali_last[1] = cali[BMA250_AXIS_Y];
+	cali_last[2] = cali[BMA250_AXIS_Z];
+
+	GSE_LOG("FQ cali data2 = %d %d %d\n", cali_last[0], cali_last[1], cali_last[2]);
+
+	err = BMA250_WriteCalibration(client, cali_last);
+
+	temp.cali_x = obj->cali_sw[BMA250_AXIS_X];
+	temp.cali_y = obj->cali_sw[BMA250_AXIS_Y];
+	temp.cali_z = obj->cali_sw[BMA250_AXIS_Z];
+
+	GSE_LOG("FQ cali data4 = %d %d %d\n", temp.cali_x, temp.cali_y, temp.cali_z);
+
+	err = fih_write_gsensor_cali(&temp);
+	return err;
+
+}
+#endif
+
+static ssize_t set_accel_cali(struct device_driver *ddri, char *buf)
+{
+	struct i2c_client *client = bma250_i2c_client;
+	struct bma250_i2c_data *obj;
+	char strbuf[BMA250_BUFSIZE];
+	int data[3] = {0, 0, 0};
+	int avg[3] = {0, 0, 0};
+	int cali[3] = {0, 0, 0};
+	int golden_x = 0;
+	int golden_y = 0;
+	int golden_z = -9800;
+	int cali_last[3] = {0, 0, 0};
+	int err = -1, num = 0, times = 20;
+
+	if (NULL == client) {
+		GSE_ERR("i2c client is null!!\n");
+		return 0;
+	}
+
+	obj = i2c_get_clientdata(client);
+	obj->cali_sw[BMA250_AXIS_X] = 0;
+	obj->cali_sw[BMA250_AXIS_Y] = 0;
+	obj->cali_sw[BMA250_AXIS_Z] = 0;
+
+	while (num < times) {
+		mdelay(20);
+		/* read gsensor data */
+		err = BMA250_ReadSensorData(client, strbuf, BMA250_BUFSIZE);
+
+		if (err) {
+			GSE_ERR("read data fail: %d\n", err);
+			return 0;
+		}
+
+		err = sscanf(strbuf, "%x %x %x", &data[BMA250_AXIS_X],
+				&data[BMA250_AXIS_Y], &data[BMA250_AXIS_Z]);
+		if (3 != err) {
+			GSE_ERR("invalid content: '%s'\n", strbuf);
+			return 0;
+		}
+
+		if (data[BMA250_AXIS_Z] > 8500)
+			golden_z = 9800;
+		else if (data[BMA250_AXIS_Z] < -8500)
+			golden_z = -9800;
+		else
+			return 0;
+
+		avg[BMA250_AXIS_X] = data[BMA250_AXIS_X] + avg[BMA250_AXIS_X];
+		avg[BMA250_AXIS_Y] = data[BMA250_AXIS_Y] + avg[BMA250_AXIS_Y];
+		avg[BMA250_AXIS_Z] = data[BMA250_AXIS_Z] + avg[BMA250_AXIS_Z];
+
+		num++;
+
+	}
+
+	avg[BMA250_AXIS_X] /= times;
+	avg[BMA250_AXIS_Y] /= times;
+	avg[BMA250_AXIS_Z] /= times;
+
+	cali[BMA250_AXIS_X] = golden_x - avg[BMA250_AXIS_X];
+	cali[BMA250_AXIS_Y] = golden_y - avg[BMA250_AXIS_Y];
+	cali[BMA250_AXIS_Z] = golden_z - avg[BMA250_AXIS_Z];
+
+
+	if ((abs(cali[BMA250_AXIS_X]) >
+		abs(accel_cali_tolerance * golden_z / 100))
+		|| (abs(cali[BMA250_AXIS_Y]) >
+		abs(accel_cali_tolerance * golden_z / 100))
+		|| (abs(cali[BMA250_AXIS_Z]) >
+		abs(accel_cali_tolerance * golden_z / 100))) {
+
+		GSE_ERR("X/Y/Z out of range  tolerance:[%d] avg_x:[%d] avg_y:[%d] avg_z:[%d]\n",
+				accel_cali_tolerance,
+				avg[BMA250_AXIS_X],
+				avg[BMA250_AXIS_Y],
+				avg[BMA250_AXIS_Z]);
+
+		return snprintf(buf, PAGE_SIZE,
+				"Please place the Pad to a horizontal level.\ntolerance:[%d] avg_x:[%d] avg_y:[%d] avg_z:[%d]\n",
+				accel_cali_tolerance,
+				avg[BMA250_AXIS_X],
+				avg[BMA250_AXIS_Y],
+				avg[BMA250_AXIS_Z]);
+	}
+
+	cali_last[0] = cali[BMA250_AXIS_X];
+	cali_last[1] = cali[BMA250_AXIS_Y];
+	cali_last[2] = cali[BMA250_AXIS_Z];
+
+	BMA250_WriteCalibration(client, cali_last);
+
+	cali[BMA250_AXIS_X] = obj->cali_sw[BMA250_AXIS_X];
+	cali[BMA250_AXIS_Y] = obj->cali_sw[BMA250_AXIS_Y];
+	cali[BMA250_AXIS_Z] = obj->cali_sw[BMA250_AXIS_Z];
+
+	accel_xyz_offset[0] = (s16)cali[BMA250_AXIS_X];
+	accel_xyz_offset[1] = (s16)cali[BMA250_AXIS_Y];
+	accel_xyz_offset[2] = (s16)cali[BMA250_AXIS_Z];
+
+	if (acc_store_offset_in_file(BMA250_ACC_CALI_FILE,
+	accel_xyz_offset, 1)) {
+		return snprintf(buf, PAGE_SIZE,
+		"[G Sensor] set_accel_cali ERROR %d, %d, %d\n",
+		accel_xyz_offset[0],
+		accel_xyz_offset[1],
+		accel_xyz_offset[2]);
+	}
+
+	return snprintf(buf, PAGE_SIZE,
+	"[G Sensor] set_accel_cali PASS  %d, %d, %d\n",
+	accel_xyz_offset[0],
+	accel_xyz_offset[1],
+	accel_xyz_offset[2]);
+}
+
+static ssize_t get_accel_cali(struct device_driver *ddri, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE,
+			"x=%d , y=%d , z=%d\nx=0x%04x , y=0x%04x , z=0x%04x\nPass\n",
+			accel_xyz_offset[0], accel_xyz_offset[1],
+			accel_xyz_offset[2], accel_xyz_offset[0],
+			accel_xyz_offset[1], accel_xyz_offset[2]);
 }
 
 /*----------------------------------------------------------------------------*/
-static int BMA253_ReadChipInfo(struct i2c_client *client, char *buf,
-			       int bufsize)
+static int BMA250_ReadChipInfo(struct i2c_client *client, char *buf, int bufsize)
 {
 	u8 databuf[10];
 
-	memset(databuf, 0, sizeof(u8) * 10);
+	memset(databuf, 0, sizeof(u8)*10);
 
 	if ((NULL == buf) || (bufsize <= 30)) {
 		return -1;
@@ -1022,64 +1207,55 @@ static int BMA253_ReadChipInfo(struct i2c_client *client, char *buf,
 	sprintf(buf, "BMA253 Chip");
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_ReadSensorData(struct i2c_client *client, char *buf,
-				 int bufsize)
+static int BMA250_ReadSensorData(struct i2c_client *client, char *buf, int bufsize)
 {
-	struct bma253_i2c_data *obj =
-	    (struct bma253_i2c_data *)i2c_get_clientdata(client);
+	struct bma250_i2c_data *obj = (struct bma250_i2c_data *)i2c_get_clientdata(client);
 	u8 databuf[20];
-	int acc[BMA253_AXES_NUM];
+	int acc[BMA250_AXES_NUM];
 	int res = 0;
-	memset(databuf, 0, sizeof(u8) * 10);
+	memset(databuf, 0, sizeof(u8)*10);
 
 	if (NULL == buf) {
 		return -1;
 	}
-	if (NULL == client) {
+	if (NULL == client || atomic_read(&obj->suspend)) {
 		*buf = 0;
 		return -2;
 	}
 
-	if (sensor_suspend == 1) {
-		return 0;
+	if (sensor_power == false) {
+		res = BMA250_SetPowerMode(client, true);
+		if (res) {
+			GSE_ERR("Power on bma250 error %d!\n", res);
+		}
 	}
-	res = BMA253_ReadData(client, obj->data);
-	if (res != 0) {
+
+
+	res = BMA250_ReadData(client, obj->data);
+	if (res) {
 		GSE_ERR("I2C error: ret value=%d", res);
 		return -3;
 	} else {
-#if 0
-		acc[BMA253_AXIS_X] = obj->data[BMA253_AXIS_X];
-		acc[BMA253_AXIS_Y] = obj->data[BMA253_AXIS_Y];
-		acc[BMA253_AXIS_Z] = obj->data[BMA253_AXIS_Z];
-#else
-		obj->data[BMA253_AXIS_X] += obj->cali_sw[BMA253_AXIS_X];
-		obj->data[BMA253_AXIS_Y] += obj->cali_sw[BMA253_AXIS_Y];
-		obj->data[BMA253_AXIS_Z] += obj->cali_sw[BMA253_AXIS_Z];
-
-		/*remap coordinate */
-		acc[obj->cvt.map[BMA253_AXIS_X]] =
-		    obj->cvt.sign[BMA253_AXIS_X] * obj->data[BMA253_AXIS_X];
-		acc[obj->cvt.map[BMA253_AXIS_Y]] =
-		    obj->cvt.sign[BMA253_AXIS_Y] * obj->data[BMA253_AXIS_Y];
-		acc[obj->cvt.map[BMA253_AXIS_Z]] =
-		    obj->cvt.sign[BMA253_AXIS_Z] * obj->data[BMA253_AXIS_Z];
-
-		acc[BMA253_AXIS_X] =
-		    acc[BMA253_AXIS_X] * GRAVITY_EARTH_1000 /
-		    obj->reso->sensitivity;
-		acc[BMA253_AXIS_Y] =
-		    acc[BMA253_AXIS_Y] * GRAVITY_EARTH_1000 /
-		    obj->reso->sensitivity;
-		acc[BMA253_AXIS_Z] =
-		    acc[BMA253_AXIS_Z] * GRAVITY_EARTH_1000 /
-		    obj->reso->sensitivity;
+#if 1
+		obj->data[BMA250_AXIS_X] = obj->data[BMA250_AXIS_X] * GRAVITY_EARTH_1000 / obj->reso->sensitivity;
+		obj->data[BMA250_AXIS_Y] = obj->data[BMA250_AXIS_Y] * GRAVITY_EARTH_1000 / obj->reso->sensitivity;
+		obj->data[BMA250_AXIS_Z] = obj->data[BMA250_AXIS_Z] * GRAVITY_EARTH_1000 / obj->reso->sensitivity;
 #endif
+		obj->data[BMA250_AXIS_X] += obj->cali_sw[BMA250_AXIS_X];
+		obj->data[BMA250_AXIS_Y] += obj->cali_sw[BMA250_AXIS_Y];
+		obj->data[BMA250_AXIS_Z] += obj->cali_sw[BMA250_AXIS_Z];
 
-		sprintf(buf, "%04x %04x %04x", acc[BMA253_AXIS_X],
-			acc[BMA253_AXIS_Y], acc[BMA253_AXIS_Z]);
+		GSE_LOG("cali_sw x=%d, y=%d, z=%d \n", obj->cali_sw[BMA250_AXIS_X], obj->cali_sw[BMA250_AXIS_Y], obj->cali_sw[BMA250_AXIS_Z]);
+
+		/*remap coordinate*/
+		acc[obj->cvt.map[BMA250_AXIS_X]] = obj->cvt.sign[BMA250_AXIS_X]*obj->data[BMA250_AXIS_X];
+		acc[obj->cvt.map[BMA250_AXIS_Y]] = obj->cvt.sign[BMA250_AXIS_Y]*obj->data[BMA250_AXIS_Y];
+		acc[obj->cvt.map[BMA250_AXIS_Z]] = obj->cvt.sign[BMA250_AXIS_Z]*obj->data[BMA250_AXIS_Z];
+
+		GSE_LOG("gsensor data x=%d, y=%d, z=%d, sensitivity:%d\n",
+			acc[BMA250_AXIS_X], acc[BMA250_AXIS_Y], acc[BMA250_AXIS_Z], obj->reso->sensitivity);
+		sprintf(buf, "%04x %04x %04x", acc[BMA250_AXIS_X], acc[BMA250_AXIS_Y], acc[BMA250_AXIS_Z]);
 		if (atomic_read(&obj->trace) & ADX_TRC_IOCTL) {
 			GSE_LOG("gsensor data: %s!\n", buf);
 		}
@@ -1087,99 +1263,74 @@ static int BMA253_ReadSensorData(struct i2c_client *client, char *buf,
 
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
-static int BMA253_ReadRawData(struct i2c_client *client, char *buf)
+static int BMA250_ReadRawData(struct i2c_client *client, char *buf)
 {
-	struct bma253_i2c_data *obj =
-	    (struct bma253_i2c_data *)i2c_get_clientdata(client);
+	struct bma250_i2c_data *obj = (struct bma250_i2c_data *)i2c_get_clientdata(client);
 	int res = 0;
 
 	if (!buf || !client) {
 		return EINVAL;
 	}
-	res = BMA253_ReadData(client, obj->data);
-	if (0 != res) {
+
+	res = BMA250_ReadData(client, obj->data);
+	if (res) {
 		GSE_ERR("I2C error: ret value=%d", res);
 		return EIO;
 	} else {
-		sprintf(buf, "BMA253_ReadRawData %04x %04x %04x",
-			obj->data[BMA253_AXIS_X], obj->data[BMA253_AXIS_Y],
-			obj->data[BMA253_AXIS_Z]);
+		sprintf(buf, "%04x %04x %04x", obj->data[BMA250_AXIS_X],
+				obj->data[BMA250_AXIS_Y], obj->data[BMA250_AXIS_Z]);
 
 	}
 
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
 static ssize_t show_chipinfo_value(struct device_driver *ddri, char *buf)
 {
-	struct i2c_client *client = bma253_i2c_client;
-	char strbuf[BMA253_BUFSIZE];
+	struct i2c_client *client = bma250_i2c_client;
+	char strbuf[BMA250_BUFSIZE];
 	if (NULL == client) {
 		GSE_ERR("i2c client is null!!\n");
 		return 0;
 	}
 
-	BMA253_ReadChipInfo(client, strbuf, BMA253_BUFSIZE);
+	BMA250_ReadChipInfo(client, strbuf, BMA250_BUFSIZE);
 	return snprintf(buf, PAGE_SIZE, "%s\n", strbuf);
 }
 
-#if 0
-static ssize_t gsensor_init(struct device_driver *ddri, char *buf, size_t count)
-{
-	struct i2c_client *client = bma253_i2c_client;
-	char strbuf[BMA253_BUFSIZE];
-
-	if (NULL == client) {
-		GSE_ERR("i2c client is null!!\n");
-		return 0;
-	}
-	bma253_init_client(client, 1);
-	return snprintf(buf, PAGE_SIZE, "%s\n", strbuf);
-}
-#endif
 
 /*----------------------------------------------------------------------------*/
 static ssize_t show_sensordata_value(struct device_driver *ddri, char *buf)
 {
-	struct i2c_client *client = bma253_i2c_client;
-	char strbuf[BMA253_BUFSIZE];
+	struct i2c_client *client = bma250_i2c_client;
+	char strbuf[BMA250_BUFSIZE] = {0};
+	int data[3] = {0, 0, 0};
+	int res;
 
 	if (NULL == client) {
 		GSE_ERR("i2c client is null!!\n");
 		return 0;
 	}
-	BMA253_ReadSensorData(client, strbuf, BMA253_BUFSIZE);
-	return snprintf(buf, PAGE_SIZE, "%s\n", strbuf);
-}
+	BMA250_ReadSensorData(client, strbuf, BMA250_BUFSIZE);
 
-#if 0
-static ssize_t show_sensorrawdata_value(struct device_driver *ddri, char *buf,
-					size_t count)
-{
-	struct i2c_client *client = bma253_i2c_client;
-	char strbuf[BMA253_BUFSIZE];
-
-	if (NULL == client) {
-		GSE_ERR("i2c client is null!!\n");
+	res = sscanf(strbuf, "%x %x %x", &data[BMA250_AXIS_X],
+			&data[BMA250_AXIS_Y], &data[BMA250_AXIS_Z]);
+	if (res == 0)
 		return 0;
-	}
-	/*BMA253_ReadSensorData(client, strbuf, BMA253_BUFSIZE);*/
-	BMA253_ReadRawData(client, strbuf);
-	return snprintf(buf, PAGE_SIZE, "%s\n", strbuf);
+	else
+		return snprintf(buf, PAGE_SIZE, "%d %d %d\n",
+				data[BMA250_AXIS_X], data[BMA250_AXIS_Y], data[BMA250_AXIS_Z]);
 }
-#endif
+
 
 /*----------------------------------------------------------------------------*/
-#if 1
 static ssize_t show_cali_value(struct device_driver *ddri, char *buf)
 {
-	struct i2c_client *client = bma253_i2c_client;
-	struct bma253_i2c_data *obj;
+	struct i2c_client *client = bma250_i2c_client;
+	struct bma250_i2c_data *obj;
 	int err, len = 0, mul;
-	int tmp[BMA253_AXES_NUM];
+	int tmp[BMA250_AXES_NUM] = {0};
 
 	if (NULL == client) {
 		GSE_ERR("i2c client is null!!\n");
@@ -1187,116 +1338,102 @@ static ssize_t show_cali_value(struct device_driver *ddri, char *buf)
 	}
 
 	obj = i2c_get_clientdata(client);
-	err = BMA253_ReadOffset(client, obj->offset);
-	if (0 != err) {
+
+	err = BMA250_ReadOffset(client, obj->offset);
+	if (err) {
+		return -EINVAL;
+	}
+	err = BMA250_ReadCalibration(client, tmp);
+	if (err) {
 		return -EINVAL;
 	} else {
-		err = BMA253_ReadCalibration(client, tmp);
-		if (0 != err) {
-			return -EINVAL;
-		} else {
-			mul =
-			    obj->reso->sensitivity /
-			    bma253_offset_resolution.sensitivity;
-			len +=
-			    snprintf(buf + len, PAGE_SIZE - len,
-				     "[HW ][%d] (%+3d, %+3d, %+3d) : (0x%02X, 0x%02X, 0x%02X)\n",
-				     mul, obj->offset[BMA253_AXIS_X],
-				     obj->offset[BMA253_AXIS_Y],
-				     obj->offset[BMA253_AXIS_Z],
-				     obj->offset[BMA253_AXIS_X],
-				     obj->offset[BMA253_AXIS_Y],
-				     obj->offset[BMA253_AXIS_Z]);
-			len +=
-			    snprintf(buf + len, PAGE_SIZE - len,
-				     "[SW ][%d] (%+3d, %+3d, %+3d)\n", 1,
-				     obj->cali_sw[BMA253_AXIS_X],
-				     obj->cali_sw[BMA253_AXIS_Y],
-				     obj->cali_sw[BMA253_AXIS_Z]);
+		mul = obj->reso->sensitivity/bma250_offset_resolution.sensitivity;
+		len += snprintf(buf+len, PAGE_SIZE-len, "[HW ][%d] (%+3d, %+3d, %+3d) : (0x%02X, 0x%02X, 0x%02X)\n", mul,
+						obj->offset[BMA250_AXIS_X], obj->offset[BMA250_AXIS_Y], obj->offset[BMA250_AXIS_Z],
+						obj->offset[BMA250_AXIS_X], obj->offset[BMA250_AXIS_Y], obj->offset[BMA250_AXIS_Z]);
+		len += snprintf(buf+len, PAGE_SIZE-len, "[SW ][%d] (%+3d, %+3d, %+3d)\n", 1,
+						obj->cali_sw[BMA250_AXIS_X], obj->cali_sw[BMA250_AXIS_Y], obj->cali_sw[BMA250_AXIS_Z]);
 
-			len +=
-			    snprintf(buf + len, PAGE_SIZE - len,
-				     "[ALL]    (%+3d, %+3d, %+3d) : (%+3d, %+3d, %+3d)\n",
-				     obj->offset[BMA253_AXIS_X] * mul +
-				     obj->cali_sw[BMA253_AXIS_X],
-				     obj->offset[BMA253_AXIS_Y] * mul +
-				     obj->cali_sw[BMA253_AXIS_Y],
-				     obj->offset[BMA253_AXIS_Z] * mul +
-				     obj->cali_sw[BMA253_AXIS_Z], tmp[BMA253_AXIS_X],
-				     tmp[BMA253_AXIS_Y], tmp[BMA253_AXIS_Z]);
+		len += snprintf(buf+len, PAGE_SIZE-len, "[ALL]	  (%+3d, %+3d, %+3d) : (%+3d, %+3d, %+3d)\n",
+						obj->offset[BMA250_AXIS_X]*mul + obj->cali_sw[BMA250_AXIS_X],
+						obj->offset[BMA250_AXIS_Y]*mul + obj->cali_sw[BMA250_AXIS_Y],
+						obj->offset[BMA250_AXIS_Z]*mul + obj->cali_sw[BMA250_AXIS_Z],
+						tmp[BMA250_AXIS_X], tmp[BMA250_AXIS_Y], tmp[BMA250_AXIS_Z]);
 
-			return len;
-		}
+		return len;
 	}
 }
-
 /*----------------------------------------------------------------------------*/
-static ssize_t store_cali_value(struct device_driver *ddri, const char *buf,
-				size_t count)
+static ssize_t store_cali_value(struct device_driver *ddri, const char *buf, size_t count)
 {
-	struct i2c_client *client = bma253_i2c_client;
+	struct i2c_client *client = bma250_i2c_client;
+
+#if GSENSOR_CALI
+	int value;
+	if (NULL == client) {
+		GSE_ERR("i2c client is null!!\n");
+		return 0;
+	} else if (1 != sscanf(buf, "%x", &value)) {
+		GSE_ERR("invalid format: '%s'\n", buf);
+		return 0;
+	}
+
+	if (value == 1)
+		gsensor_calibration();
+#else
 	int err, x, y, z;
-	int dat[BMA253_AXES_NUM];
+	int dat[BMA250_AXES_NUM];
 
 	if (!strncmp(buf, "rst", 3)) {
-		err = BMA253_ResetCalibration(client);
-		if (0 != err) {
+		err = BMA250_ResetCalibration(client);
+		if (err) {
 			GSE_ERR("reset offset err = %d\n", err);
 		}
-	} else if (3 == sscanf(buf, "%d %d %d", &x, &y, &z)) {
-		dat[BMA253_AXIS_X] = x;
-		dat[BMA253_AXIS_Y] = y;
-		dat[BMA253_AXIS_Z] = z;
-		err = BMA253_WriteCalibration(client, dat);
-		if (0 != err) {
+	} else if (3 == sscanf(buf, "0x%02X 0x%02X 0x%02X", &x, &y, &z)) {
+		dat[BMA250_AXIS_X] = x;
+		dat[BMA250_AXIS_Y] = y;
+		dat[BMA250_AXIS_Z] = z;
+		err = BMA250_WriteCalibration(client, dat);
+		if (err) {
 			GSE_ERR("write calibration err = %d\n", err);
 		}
 	} else {
 		GSE_ERR("invalid format\n");
 	}
+#endif
 
 	return count;
 }
-#endif
+
 
 /*----------------------------------------------------------------------------*/
 static ssize_t show_firlen_value(struct device_driver *ddri, char *buf)
 {
-#ifdef CONFIG_BMA253_LOWPASS
-	struct i2c_client *client = bma253_i2c_client;
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
+#ifdef CONFIG_BMA250_LOWPASS
+	struct i2c_client *client = bma250_i2c_client;
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
 	if (atomic_read(&obj->firlen)) {
 		int idx, len = atomic_read(&obj->firlen);
 		GSE_LOG("len = %2d, idx = %2d\n", obj->fir.num, obj->fir.idx);
 
 		for (idx = 0; idx < len; idx++) {
-			GSE_LOG("[%5d %5d %5d]\n",
-				obj->fir.raw[idx][BMA253_AXIS_X],
-				obj->fir.raw[idx][BMA253_AXIS_Y],
-				obj->fir.raw[idx][BMA253_AXIS_Z]);
+			GSE_LOG("[%5d %5d %5d]\n", obj->fir.raw[idx][BMA250_AXIS_X], obj->fir.raw[idx][BMA250_AXIS_Y], obj->fir.raw[idx][BMA250_AXIS_Z]);
 		}
 
-		GSE_LOG("sum = [%5d %5d %5d]\n", obj->fir.sum[BMA253_AXIS_X],
-			obj->fir.sum[BMA253_AXIS_Y],
-			obj->fir.sum[BMA253_AXIS_Z]);
-		GSE_LOG("avg = [%5d %5d %5d]\n",
-			obj->fir.sum[BMA253_AXIS_X] / len,
-			obj->fir.sum[BMA253_AXIS_Y] / len,
-			obj->fir.sum[BMA253_AXIS_Z] / len);
+		GSE_LOG("sum = [%5d %5d %5d]\n", obj->fir.sum[BMA250_AXIS_X], obj->fir.sum[BMA250_AXIS_Y], obj->fir.sum[BMA250_AXIS_Z]);
+		GSE_LOG("avg = [%5d %5d %5d]\n", obj->fir.sum[BMA250_AXIS_X]/len, obj->fir.sum[BMA250_AXIS_Y]/len, obj->fir.sum[BMA250_AXIS_Z]/len);
 	}
 	return snprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&obj->firlen));
 #else
 	return snprintf(buf, PAGE_SIZE, "not support\n");
 #endif
 }
-
 /*----------------------------------------------------------------------------*/
-static ssize_t store_firlen_value(struct device_driver *ddri, const char *buf,
-				  size_t count)
+static ssize_t store_firlen_value(struct device_driver *ddri, const char *buf, size_t count)
 {
-#ifdef CONFIG_BMA253_LOWPASS
-	struct i2c_client *client = bma253_i2c_client;
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
+#ifdef CONFIG_BMA250_LOWPASS
+	struct i2c_client *client = bma250_i2c_client;
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
 	int firlen;
 
 	if (1 != sscanf(buf, "%d", &firlen)) {
@@ -1315,12 +1452,11 @@ static ssize_t store_firlen_value(struct device_driver *ddri, const char *buf,
 #endif
 	return count;
 }
-
 /*----------------------------------------------------------------------------*/
 static ssize_t show_trace_value(struct device_driver *ddri, char *buf)
 {
 	ssize_t res;
-	struct bma253_i2c_data *obj = obj_i2c_data;
+	struct bma250_i2c_data *obj = obj_i2c_data;
 	if (obj == NULL) {
 		GSE_ERR("i2c_data obj is null!!\n");
 		return 0;
@@ -1329,12 +1465,10 @@ static ssize_t show_trace_value(struct device_driver *ddri, char *buf)
 	res = snprintf(buf, PAGE_SIZE, "0x%04X\n", atomic_read(&obj->trace));
 	return res;
 }
-
 /*----------------------------------------------------------------------------*/
-static ssize_t store_trace_value(struct device_driver *ddri, const char *buf,
-				 size_t count)
+static ssize_t store_trace_value(struct device_driver *ddri, const char *buf, size_t count)
 {
-	struct bma253_i2c_data *obj = obj_i2c_data;
+	struct bma250_i2c_data *obj = obj_i2c_data;
 	int trace;
 	if (obj == NULL) {
 		GSE_ERR("i2c_data obj is null!!\n");
@@ -1344,322 +1478,368 @@ static ssize_t store_trace_value(struct device_driver *ddri, const char *buf,
 	if (1 == sscanf(buf, "0x%x", &trace)) {
 		atomic_set(&obj->trace, trace);
 	} else {
-		GSE_ERR("invalid content: '%s', length = %d\n", buf,
-			(int)count);
+		GSE_ERR("invalid content: '%s', length = %d\n", buf, (int)count);
 	}
 
 	return count;
 }
-
 /*----------------------------------------------------------------------------*/
 static ssize_t show_status_value(struct device_driver *ddri, char *buf)
 {
 	ssize_t len = 0;
-	struct bma253_i2c_data *obj = obj_i2c_data;
+	struct bma250_i2c_data *obj = obj_i2c_data;
 	if (obj == NULL) {
 		GSE_ERR("i2c_data obj is null!!\n");
 		return 0;
 	}
 
 	if (obj->hw) {
-		len +=
-		    snprintf(buf + len, PAGE_SIZE - len,
-			     "CUST: %d %d (%d %d)\n", obj->hw->i2c_num,
-			     obj->hw->direction, obj->hw->power_id,
-			     obj->hw->power_vol);
+		len += snprintf(buf+len, PAGE_SIZE-len, "CUST: %d %d (%d %d)\n",
+						obj->hw->i2c_num, obj->hw->direction, obj->hw->power_id, obj->hw->power_vol);
 	} else {
-		len += snprintf(buf + len, PAGE_SIZE - len, "CUST: NULL\n");
+		len += snprintf(buf+len, PAGE_SIZE-len, "CUST: NULL\n");
 	}
 	return len;
 }
-
 /*----------------------------------------------------------------------------*/
 static ssize_t show_power_status_value(struct device_driver *ddri, char *buf)
 {
-
-	u8 databuf[2];
-	u8 addr = BMA253_REG_POWER_CTL;
-	struct bma253_i2c_data *obj = obj_i2c_data;
-	if (bma_i2c_read_block(obj->client, addr, databuf, 0x01)) {
-		GSE_ERR("read power ctl register err!\n");
-		return 1;
-	}
-
 	if (sensor_power)
-		GSE_LOG("G sensor is in work mode, sensor_power = %d\n",
-			sensor_power);
+		GSE_LOG("G sensor is in work mode, sensor_power = %d\n", sensor_power);
 	else
-		GSE_LOG("G sensor is in standby mode, sensor_power = %d\n",
-			sensor_power);
+		GSE_LOG("G sensor is in standby mode, sensor_power = %d\n", sensor_power);
 
-	return snprintf(buf, PAGE_SIZE, "%x\n", databuf[0]);
+	return 0;
 }
 
-static ssize_t show_chip_orientation(struct device_driver *ddri, char *pbBuf)
+#if GSENSOR_CALI
+static ssize_t show_gcalidata(struct device_driver *ddri, char *buf)
+{
+
+	struct bma250_i2c_data *obj = obj_i2c_data;
+	return snprintf(buf, PAGE_SIZE, "%d %d %d\n", obj->cali_sw[0], obj->cali_sw[1], obj->cali_sw[2]);
+
+}
+#endif
+
+static ssize_t set_accel_self_test(struct device_driver *ddri, char *buf)
+{
+	struct i2c_client *client = bma250_i2c_client;
+	struct bma250_i2c_data *obj;
+	char strbuf[BMA250_BUFSIZE];
+	int data[3] = {0, 0, 0};
+	int avg[3] = {0}, out_nost[3] = {0};
+	int err = -1, num = 0, count = 5;
+
+	accel_self_test[0] = accel_self_test[1] = accel_self_test[2] = 0;
+	obj = i2c_get_clientdata(client);
+
+	err = BMA250_SetPowerMode(obj_i2c_data->client, 1);
+	if (err) {
+		GSE_ERR("enable gsensor fail: %d\n", err);
+		goto BMA250_accel_self_test_exit;
+	}
+
+	msleep(100);
+
+	while (num < count) {
+
+		mdelay(20);
+
+		/* read gsensor data */
+		err = BMA250_ReadSensorData(client, strbuf, BMA250_BUFSIZE);
+
+		if (err) {
+			GSE_ERR("read data fail: %d\n", err);
+			goto BMA250_accel_self_test_exit;
+		}
+
+		err = sscanf(strbuf, "%x %x %x", &data[BMA250_AXIS_X],
+				&data[BMA250_AXIS_Y], &data[BMA250_AXIS_Z]);
+		if (3 != err) {
+			GSE_ERR("invalid content: '%s'\n", strbuf);
+			goto BMA250_accel_self_test_exit;
+		}
+
+		avg[BMA250_AXIS_X] = data[BMA250_AXIS_X] + avg[BMA250_AXIS_X];
+		avg[BMA250_AXIS_Y] = data[BMA250_AXIS_Y] + avg[BMA250_AXIS_Y];
+		avg[BMA250_AXIS_Z] = data[BMA250_AXIS_Z] + avg[BMA250_AXIS_Z];
+
+		num++;
+
+	}
+
+	out_nost[0] = avg[BMA250_AXIS_X] / count;
+	out_nost[1] = avg[BMA250_AXIS_Y] / count;
+	out_nost[2] = avg[BMA250_AXIS_Z] / count;
+
+	accel_self_test[0] = abs(out_nost[0]);
+	accel_self_test[1] = abs(out_nost[1]);
+	accel_self_test[2] = abs(out_nost[2]);
+
+    /* disable sensor */
+	err = BMA250_SetPowerMode(obj_i2c_data->client, 0);
+	if (err < 0)
+		goto BMA250_accel_self_test_exit;
+
+	return snprintf(buf, PAGE_SIZE,
+			"[G Sensor] set_accel_self_test PASS\n");
+
+BMA250_accel_self_test_exit:
+
+	BMA250_SetPowerMode(obj_i2c_data->client, 0);
+
+	return snprintf(buf, PAGE_SIZE,
+			"[G Sensor] exit - Fail , err=%d\n", err);
+
+}
+
+static ssize_t get_accel_self_test(struct device_driver *ddri, char *buf)
+{
+	if (accel_self_test[0] < ACCEL_SELF_TEST_MIN_VAL ||
+		accel_self_test[0] > ACCEL_SELF_TEST_MAX_VAL)
+		return sprintf(buf, "X=%d , out of range\nFail\n",
+				accel_self_test[0]);
+
+	if (accel_self_test[1] < ACCEL_SELF_TEST_MIN_VAL ||
+		accel_self_test[1] > ACCEL_SELF_TEST_MAX_VAL)
+		return sprintf(buf, "Y=%d , out of range\nFail\n",
+				accel_self_test[1]);
+
+	if (accel_self_test[2] < ACCEL_SELF_TEST_MIN_VAL ||
+		accel_self_test[2] > ACCEL_SELF_TEST_MAX_VAL)
+		return sprintf(buf, "Z=%d , out of range\nFail\n",
+				accel_self_test[2]);
+	else
+		return sprintf(buf, "%d , %d , %d\nPass\n", accel_self_test[0],
+				accel_self_test[1], accel_self_test[2]);
+}
+
+static void get_accel_idme_cali(void)
+{
+
+	s16 idmedata[6] = {0};
+	idme_get_sensorcal(idmedata);
+
+	accel_xyz_offset[0] = idmedata[0];
+	accel_xyz_offset[1] = idmedata[1];
+	accel_xyz_offset[2] = idmedata[2];
+
+	GSE_LOG("accel_xyz_offset =%d, %d, %d\n", accel_xyz_offset[0],
+			accel_xyz_offset[1], accel_xyz_offset[2]);
+}
+
+static ssize_t get_idme_cali(struct device_driver *ddri, char *buf)
+{
+	get_accel_idme_cali();
+	return snprintf(buf, PAGE_SIZE,
+			"offset_x=%d , offset_y=%d , offset_z=%d\nPass\n",
+			accel_xyz_offset[0],
+			accel_xyz_offset[1],
+			accel_xyz_offset[2]);
+}
+
+
+
+static ssize_t show_power_mode(struct device_driver *ptDevDrv, char *pbBuf)
 {
 	ssize_t _tLength = 0;
 
-	GSE_LOG("[%s] default direction: %d\n", __func__, hw->direction);
-
-	_tLength = snprintf(pbBuf, PAGE_SIZE, "default direction = %d\n", hw->direction);
+	GSE_LOG("[%s] mc3xxx_sensor_power: %d\n", __func__, sensor_power);
+	_tLength = snprintf(pbBuf, PAGE_SIZE, "%d\n", sensor_power);
 
 	return _tLength;
 }
 
-static ssize_t store_chip_orientation(struct device_driver *ddri,
-				      const char *pbBuf, size_t tCount)
+/*****************************************
+ *** store_power_mode
+ *****************************************/
+static ssize_t store_power_mode(struct device_driver *ptDevDrv,
+				const char *pbBuf, size_t tCount)
 {
-	int _nDirection = 0;
-	struct bma253_i2c_data *_pt_i2c_obj = obj_i2c_data;
+	int power_mode = 0;
+	bool power_enable = false;
+	int ret = 0;
 
-	if (NULL == _pt_i2c_obj)
+	struct i2c_client *client = obj_i2c_data->client;
+
+	if (NULL == client)
 		return 0;
 
-	if (1 == sscanf(pbBuf, "%d", &_nDirection)) {
-		if (hwmsen_get_convert(_nDirection, &_pt_i2c_obj->cvt))
-			GSE_ERR("ERR: fail to set direction\n");
-	}
+	ret = kstrtoint(pbBuf, 10, &power_mode);
 
-	GSE_LOG("[%s] set direction: %d\n", __FUNCTION__, _nDirection);
+	power_enable = (power_mode ? true:false);
+
+	if (0 == ret)
+		ret = BMA250_SetPowerMode(client, power_enable);
+
+	if (ret) {
+		GSE_ERR("set power %s failed %d\n", (power_enable?"on":"off"), ret);
+		return 0;
+	} else
+		GSE_ERR("set power %s ok\n", (sensor_power?"on":"off"));
 
 	return tCount;
 }
 
-static ssize_t show_selftest(struct device_driver *ddri, char *pbBuf)
+static ssize_t show_cali_tolerance(struct device_driver *ptDevDrv, char *pbBuf)
 {
-	struct i2c_client *client = bma253_i2c_client;
+	ssize_t _tLength = 0;
 
-	GSE_LOG("++++show_selftest!\n");
+	_tLength = snprintf(pbBuf, PAGE_SIZE, "accel_cali_tolerance=%d\n",
+						accel_cali_tolerance);
 
-	if(NULL == client)
-	{
-		GSE_ERR("i2c client is null!!\n");
+	return _tLength;
+}
+
+/*****************************************
+ *** store_cali_tolerance
+ *****************************************/
+static ssize_t store_cali_tolerance(struct device_driver *ptDevDrv,
+					const char *pbBuf, size_t tCount)
+{
+	int temp_cali_tolerance = 0;
+	int ret = 0;
+
+	ret = kstrtoint(pbBuf, 10, &temp_cali_tolerance);
+
+	if (0 == ret) {
+		if (temp_cali_tolerance > 100)
+			temp_cali_tolerance = 100;
+		if (temp_cali_tolerance <= 0)
+			temp_cali_tolerance = 1;
+
+		accel_cali_tolerance = temp_cali_tolerance;
+	}
+
+	if (ret) {
+		GSE_ERR("set accel_cali_tolerance failed %d\n", ret);
 		return 0;
-	}
-	return snprintf(pbBuf, 8, "%s\n", selftestRes);
+	} else
+		GSE_ERR("set accel_cali_tolerance %d ok\n", accel_cali_tolerance);
+
+	return tCount;
 }
-static ssize_t store_selftest(struct device_driver *ddri, const char *pbBuf, size_t tCount)
+
+/*----------------------------------------------------------------------------*/
+static ssize_t show_registers(struct device_driver *ddri, char *buf)
 {
-	short value1 = 0;
-	short value2 = 0;
-	short diff = 0;
-	unsigned char result = 0;
-	unsigned char test_result_branch = 0;
+	unsigned char temp = 0;
+	int count = 0;
+	int num = 0;
 
-	u8 buf[BMA253_DATA_LEN] = {0};
-	u8 databuf[10]={0};
-
-	struct i2c_client *client = bma253_i2c_client;
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
-
-	GSE_LOG("++++store_selftest!\n");
-
-	//bma2x2_soft_reset(bma2x2->bma2x2_client);
-	databuf[0] = 0xB6;
-	if(bma_i2c_write_block(client, BMA253_REG_DATA_RESOLUTION, databuf, 0x1))
-	{
-		GSE_ERR("BMA253 Soft Reset!\n");
+	if (buf == NULL)
+		return -EINVAL;
+	if (bma250_i2c_client == NULL)
+		return -EINVAL;
+	mutex_lock(&gsensor_mutex);
+	while (count <= 0x3F) {
+		temp = 0;
+		if (hwmsen_read_block(bma250_i2c_client,
+			count,
+			&temp,
+			1) < 0) {
+			num =
+			 snprintf(buf, PAGE_SIZE, "Read byte block error\n");
+			return num;
+		} else {
+			num +=
+			 snprintf(buf + num, PAGE_SIZE, "0x%x\n", temp);
+		}
+		count++;
 	}
-	mdelay(5);
-
-	databuf[0] = 0x00;
-	if(bma_i2c_write_block(client, BMA253_SELF_TEST, databuf, 0x1))
-	{
-		GSE_ERR("clear selftest register!\n");
-	}
-	databuf[0] = 0x10;
-	if(bma_i2c_write_block(client, BMA253_SELF_TEST, databuf, 0x1))
-	{
-		GSE_ERR("set selftest amp register!\n");
-	}
-
-	/* 1 for x-axis(but BMI058 is 1 for y-axis )*/
-	//bma2x2_set_selftest_st(bma2x2->bma2x2_client, 1);
-	//bma2x2_set_selftest_stn(bma2x2->bma2x2_client, 0);
-	databuf[0] = 0x11;
-	bma_i2c_write_block(client, BMA253_SELF_TEST, databuf, 0x1);
-	mdelay(10);
-	//bma2x2_read_accel_x(bma2x2->bma2x2_client, bma2x2->sensor_type, &value1);
-	bma_i2c_read_block(client, BMA253_REG_DATAXLOW, buf, 6);
-	obj->data[BMA253_AXIS_X] = (s16)((buf[0] | ((u16)buf[1]<<8)));
-	obj->data[BMA253_AXIS_X] >>= 4;
-	value1 = obj->data[BMA253_AXIS_X];
-
-	//bma2x2_set_selftest_stn(bma2x2->bma2x2_client, 1);
-	databuf[0] = 0x15;
-	bma_i2c_write_block(client, BMA253_SELF_TEST, databuf, 0x1);
-	mdelay(10);
-	//bma2x2_read_accel_x(bma2x2->bma2x2_client,bma2x2->sensor_type, &value2);
-	bma_i2c_read_block(client, BMA253_REG_DATAXLOW, buf, 6);
-	obj->data[BMA253_AXIS_X] = (s16)((buf[0] | ((u16)buf[1]<<8)));
-	obj->data[BMA253_AXIS_X] >>= 4;
-	value2 = obj->data[BMA253_AXIS_X];
-	diff = value1-value2;
-
-	GSE_LOG("diff x is %d,value1 is %d, value2 is %d\n", diff,
-				value1, value2);
-	test_result_branch = 1;
-
-	if (abs(diff) < 409)
-			result |= 1;
-
-	GSE_LOG("result = %d\n", result);
-
-	/* 2 for y-axis but BMI058 is 1*/
-	//bma2x2_set_selftest_st(bma2x2->bma2x2_client, 2);
-	//bma2x2_set_selftest_stn(bma2x2->bma2x2_client, 0);
-	databuf[0] = 0x12;
-	bma_i2c_write_block(client, BMA253_SELF_TEST, databuf, 0x1);
-	mdelay(10);
-	//bma2x2_read_accel_y(bma2x2->bma2x2_client,bma2x2->sensor_type, &value1);
-	bma_i2c_read_block(client, BMA253_REG_DATAXLOW, buf, 6);
-	obj->data[BMA253_AXIS_Y] = (s16)((buf[2] | ((u16)buf[3]<<8)));
-	obj->data[BMA253_AXIS_Y] >>= 4;
-	value1 = obj->data[BMA253_AXIS_Y];
-
-	//bma2x2_set_selftest_stn(bma2x2->bma2x2_client, 1);
-	databuf[0] = 0x16;
-	bma_i2c_write_block(client, BMA253_SELF_TEST, databuf, 0x1);
-	mdelay(10);
-	//bma2x2_read_accel_y(bma2x2->bma2x2_client,bma2x2->sensor_type, &value2);
-	bma_i2c_read_block(client, BMA253_REG_DATAXLOW, buf, 6);
-	obj->data[BMA253_AXIS_Y] = (s16)((buf[2] | ((u16)buf[3]<<8)));
-	obj->data[BMA253_AXIS_Y] >>= 4;
-	value2 = obj->data[BMA253_AXIS_Y];
-	diff = value1-value2;
-	GSE_LOG("diff y is %d,value1 is %d, value2 is %d\n", diff,
-				value1, value2);
-	test_result_branch = 2;
-
-	if (abs(diff) < 409)
-		result |= test_result_branch;
-
-	GSE_LOG("result = %d\n", result);
-
-	//bma2x2_set_selftest_st(bma2x2->bma2x2_client, 3); /* 3 for z-axis*/
-	//bma2x2_set_selftest_stn(bma2x2->bma2x2_client, 0);
-	databuf[0] = 0x13;
-	bma_i2c_write_block(client, BMA253_SELF_TEST, databuf, 0x1);
-	mdelay(10);
-	//bma2x2_read_accel_z(bma2x2->bma2x2_client,bma2x2->sensor_type, &value1);
-	bma_i2c_read_block(client, BMA253_REG_DATAXLOW, buf, 6);
-	obj->data[BMA253_AXIS_Z] = (s16)((buf[4] | ((u16)buf[5]<<8)));
-	obj->data[BMA253_AXIS_Z] >>= 4;
-	value1 = obj->data[BMA253_AXIS_Z];
-
-	//bma2x2_set_selftest_stn(bma2x2->bma2x2_client, 1);
-	databuf[0] = 0x17;
-	bma_i2c_write_block(client, BMA253_SELF_TEST, databuf, 0x1);
-	mdelay(10);
-	//bma2x2_read_accel_z(bma2x2->bma2x2_client,bma2x2->sensor_type, &value2);
-	bma_i2c_read_block(client, BMA253_REG_DATAXLOW, buf, 6);
-	obj->data[BMA253_AXIS_Z] = (s16)((buf[4] | ((u16)buf[5]<<8)));
-	obj->data[BMA253_AXIS_Z] >>= 4;
-	value2 = obj->data[BMA253_AXIS_Z];
-	diff = value1-value2;
-
-	GSE_LOG("diff z is %d,value1 is %d, value2 is %d\n", diff,
-			value1, value2);
-
-	if (abs(diff) < 204)
-		result |= 4;
-
-	GSE_LOG("result = %d\n", result);
-
-	if(result == 1)
-		strcpy(selftestRes,"1");
-	else if(result == 2)
-		strcpy(selftestRes,"2");
-	else if(result == 3)
-		strcpy(selftestRes,"3");
-	else if(result == 4)
-		strcpy(selftestRes,"4");
-	else if(result == 5)
-		strcpy(selftestRes,"5");
-	else if(result == 6)
-		strcpy(selftestRes,"6");
-	else if(result == 7)
-		strcpy(selftestRes,"7");
-	else
-		strcpy(selftestRes,"0");
-
-	//bma2x2_soft_reset(bma2x2->bma2x2_client);
-	databuf[0] = 0xB6;
-	bma_i2c_write_block(client, BMA253_REG_DATA_RESOLUTION, databuf, 0x1);
-	mdelay(5);
-	GSE_LOG("self test finished\n");
-
-    return (tCount);
+	mutex_unlock(&gsensor_mutex);
+	return num;
 }
 
 /*----------------------------------------------------------------------------*/
-static DRIVER_ATTR(chipinfo,   S_IWUSR | S_IRUGO, show_chipinfo_value,      NULL);
-static DRIVER_ATTR(sensordata, S_IWUSR | S_IRUGO, show_sensordata_value,    NULL);
-static DRIVER_ATTR(cali,       S_IWUSR | S_IRUGO, show_cali_value,          store_cali_value);
-static DRIVER_ATTR(firlen,     S_IWUSR | S_IRUGO, show_firlen_value,        store_firlen_value);
-static DRIVER_ATTR(trace,      S_IWUSR | S_IRUGO, show_trace_value,         store_trace_value);
-static DRIVER_ATTR(status,     S_IRUGO, show_status_value,        NULL);
-static DRIVER_ATTR(powerstatus,               S_IRUGO, show_power_status_value,        NULL);
-static DRIVER_ATTR(orientation, S_IWUSR | S_IRUGO, show_chip_orientation, store_chip_orientation);
-static DRIVER_ATTR(selftest, S_IWUSR | S_IRUGO, show_selftest, store_selftest);
+static DRIVER_ATTR(chipinfo, S_IWUSR | S_IRUGO, show_chipinfo_value, NULL);
+static DRIVER_ATTR(sensordata, S_IWUSR | S_IRUGO, show_sensordata_value, NULL);
+static DRIVER_ATTR(cali, S_IWUSR | S_IRUGO, show_cali_value, store_cali_value);
+static DRIVER_ATTR(firlen, S_IWUSR | S_IRUGO,
+		show_firlen_value, store_firlen_value);
+static DRIVER_ATTR(trace, S_IWUSR | S_IRUGO,
+		show_trace_value, store_trace_value);
+static DRIVER_ATTR(status, S_IRUGO, show_status_value, NULL);
+static DRIVER_ATTR(powerstatus, S_IRUGO, show_power_status_value, NULL);
+static DRIVER_ATTR(accelsetselftest, S_IRUGO, set_accel_self_test, NULL);
+static DRIVER_ATTR(accelgetselftest, S_IRUGO, get_accel_self_test, NULL);
+static DRIVER_ATTR(accelgetcali, S_IRUGO, get_accel_cali, NULL);
+static DRIVER_ATTR(accelsetcali, S_IRUGO, set_accel_cali, NULL);
+static DRIVER_ATTR(accelgetidme, S_IRUGO, get_idme_cali, NULL);
+#if GSENSOR_CALI
+static DRIVER_ATTR(gcalidata, S_IRUGO, show_gcalidata, NULL);
+#endif
+
+static DRIVER_ATTR(power_mode, S_IWUSR | S_IRUGO, show_power_mode, store_power_mode);
+static DRIVER_ATTR(cali_tolerance,  S_IWUSR | S_IRUGO, show_cali_tolerance, store_cali_tolerance);
+static DRIVER_ATTR(dump_registers, S_IRUGO, show_registers, NULL);
+
 
 /*----------------------------------------------------------------------------*/
-static struct driver_attribute *bma253_attr_list[] = {
-	&driver_attr_chipinfo,	/*chip information */
-	&driver_attr_sensordata,	/*dump sensor data */
-	&driver_attr_cali,	/*show calibration data */
-	&driver_attr_firlen,	/*filter length: 0: disable, others: enable */
-	&driver_attr_trace,	/*trace log */
+static struct driver_attribute *bma250_attr_list[] = {
+	&driver_attr_chipinfo,	   /*chip information*/
+	&driver_attr_sensordata,   /*dump sensor data*/
+	&driver_attr_cali,		   /*show calibration data*/
+	&driver_attr_firlen,	   /*filter length: 0: disable, others: enable*/
+	&driver_attr_trace,		   /*trace log*/
 	&driver_attr_status,
 	&driver_attr_powerstatus,
-	&driver_attr_orientation,
-	&driver_attr_selftest,
+	&driver_attr_accelgetcali,
+	&driver_attr_accelsetcali,
+	&driver_attr_accelsetselftest,
+	&driver_attr_accelgetselftest,
+	&driver_attr_accelgetidme,
+#if GSENSOR_CALI
+	&driver_attr_gcalidata,
+#endif
+	&driver_attr_power_mode,
+	&driver_attr_cali_tolerance,
+	&driver_attr_dump_registers,
+
 };
 /*----------------------------------------------------------------------------*/
-static int bma253_create_attr(struct device_driver *driver)
+static int bma250_create_attr(struct device_driver *driver)
 {
 	int idx, err = 0;
-	int num = (int)(sizeof(bma253_attr_list) / sizeof(bma253_attr_list[0]));
+	int num = (int)(sizeof(bma250_attr_list)/sizeof(bma250_attr_list[0]));
 	if (driver == NULL) {
 		return -EINVAL;
 	}
 
 	for (idx = 0; idx < num; idx++) {
-		err = driver_create_file(driver, bma253_attr_list[idx]);
-		if (0 !=
-		    err) {
-			GSE_ERR("driver_create_file (%s) = %d\n",
-				bma253_attr_list[idx]->attr.name, err);
+		err = driver_create_file(driver, bma250_attr_list[idx]);
+		if (err) {
+			GSE_ERR("driver_create_file (%s) = %d\n", bma250_attr_list[idx]->attr.name, err);
 			break;
 		}
 	}
 	return err;
 }
-
 /*----------------------------------------------------------------------------*/
-static int bma253_delete_attr(struct device_driver *driver)
+static int bma250_delete_attr(struct device_driver *driver)
 {
 	int idx, err = 0;
-	int num = (int)(sizeof(bma253_attr_list) / sizeof(bma253_attr_list[0]));
+	int num = (int)(sizeof(bma250_attr_list)/sizeof(bma250_attr_list[0]));
 
 	if (driver == NULL) {
 		return -EINVAL;
 	}
 
 	for (idx = 0; idx < num; idx++) {
-		driver_remove_file(driver, bma253_attr_list[idx]);
+		driver_remove_file(driver, bma250_attr_list[idx]);
 	}
 
 	return err;
 }
 
 /*----------------------------------------------------------------------------*/
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+#ifdef CUSTOM_KERNEL_SENSORHUB
 static void gsensor_irq_work(struct work_struct *work)
 {
-	struct bma253_i2c_data *obj = obj_i2c_data;
+	struct bma250_i2c_data *obj = obj_i2c_data;
 	struct scp_acc_hw scp_hw;
-	BMA253_CUST_DATA *p_cust_data;
+	BMA250_CUST_DATA *p_cust_data;
 	SCP_SENSOR_HUB_DATA data;
 	int max_cust_data_size_per_packet;
 	int i;
@@ -1679,20 +1859,14 @@ static void gsensor_irq_work(struct work_struct *work)
 	scp_hw.power_vio_vol = obj->hw->power_vio_vol;
 	scp_hw.is_batch_supported = obj->hw->is_batch_supported;
 
-	p_cust_data = (BMA253_CUST_DATA *) data.set_cust_req.custData;
+	p_cust_data = (BMA250_CUST_DATA *)data.set_cust_req.custData;
 	sizeOfCustData = sizeof(scp_hw);
-	max_cust_data_size_per_packet =
-	    sizeof(data.set_cust_req.custData) - offsetof(BMA253_SET_CUST,
-							  data);
-
-	GSE_ERR("sizeOfCustData = %d, max_cust_data_size_per_packet = %d\n",
-		sizeOfCustData, max_cust_data_size_per_packet);
-	GSE_ERR("offset %d\n", offsetof(BMA253_SET_CUST, data));
+	max_cust_data_size_per_packet = sizeof(data.set_cust_req.custData) - offsetof(BMA250_SET_CUST, data);
 
 	for (i = 0; sizeOfCustData > 0; i++) {
 		data.set_cust_req.sensorType = ID_ACCELEROMETER;
 		data.set_cust_req.action = SENSOR_HUB_SET_CUST;
-		p_cust_data->setCust.action = BMA253_CUST_ACTION_SET_CUST;
+		p_cust_data->setCust.action = BMA250_CUST_ACTION_SET_CUST;
 		p_cust_data->setCust.part = i;
 		if (sizeOfCustData > max_cust_data_size_per_packet) {
 			len = max_cust_data_size_per_packet;
@@ -1704,36 +1878,29 @@ static void gsensor_irq_work(struct work_struct *work)
 		sizeOfCustData -= len;
 		p += len;
 
-		GSE_ERR("i= %d, sizeOfCustData = %d, len = %d \n", i,
-			sizeOfCustData, len);
-		len +=
-		    offsetof(SCP_SENSOR_HUB_SET_CUST_REQ,
-			     custData) + offsetof(BMA253_SET_CUST, data);
-		GSE_ERR("data.set_cust_req.sensorType= %d \n",
-			data.set_cust_req.sensorType);
+		len += offsetof(SCP_SENSOR_HUB_SET_CUST_REQ, custData) + offsetof(BMA250_SET_CUST, data);
 		SCP_sensorHub_req_send(&data, &len, 1);
-
 	}
-	p_cust_data = (BMA253_CUST_DATA *) &data.set_cust_req.custData;
+
+	p_cust_data = (BMA250_CUST_DATA *)&data.set_cust_req.custData;
+
 	data.set_cust_req.sensorType = ID_ACCELEROMETER;
 	data.set_cust_req.action = SENSOR_HUB_SET_CUST;
-	p_cust_data->resetCali.action = BMA253_CUST_ACTION_RESET_CALI;
-	len =
-	    offsetof(SCP_SENSOR_HUB_SET_CUST_REQ,
-		     custData) + sizeof(p_cust_data->resetCali);
+	p_cust_data->resetCali.action = BMA250_CUST_ACTION_RESET_CALI;
+	len = offsetof(SCP_SENSOR_HUB_SET_CUST_REQ, custData) + sizeof(p_cust_data->resetCali);
 	SCP_sensorHub_req_send(&data, &len, 1);
+
 	obj->SCP_init_done = 1;
 }
-
 /*----------------------------------------------------------------------------*/
 static int gsensor_irq_handler(void *data, uint len)
 {
-	struct bma253_i2c_data *obj = obj_i2c_data;
-	SCP_SENSOR_HUB_DATA_P rsp = (SCP_SENSOR_HUB_DATA_P) data;
+	struct bma250_i2c_data *obj = obj_i2c_data;
+	SCP_SENSOR_HUB_DATA_P rsp = (SCP_SENSOR_HUB_DATA_P)data;
 
-	GSE_ERR
-	    ("gsensor_irq_handler len = %d, type = %d, action = %d, errCode = %d\n",
-	     len, rsp->rsp.sensorType, rsp->rsp.action, rsp->rsp.errCode);
+	GSE_FUN();
+	GSE_LOG("len = %d, type = %d, action = %d, errCode = %d\n", len, rsp->rsp.sensorType, rsp->rsp.action, rsp->rsp.errCode);
+
 	if (!obj) {
 		return -1;
 	}
@@ -1743,15 +1910,14 @@ static int gsensor_irq_handler(void *data, uint len)
 		switch (rsp->notify_rsp.event) {
 		case SCP_INIT_DONE:
 			schedule_work(&obj->irq_work);
-			GSE_ERR("OK sensor hub notify\n");
 			break;
 		default:
-			GSE_ERR("Error sensor hub notify\n");
+			GSE_ERR("Error sensor hub notify");
 			break;
 		}
 		break;
 	default:
-		GSE_ERR("Error sensor hub action\n");
+		GSE_ERR("Error sensor hub action");
 		break;
 	}
 
@@ -1762,19 +1928,23 @@ static int gsensor_setup_irq(void)
 {
 	int err = 0;
 
-	err =
-	    SCP_sensorHub_rsp_registration(ID_ACCELEROMETER,
-					   gsensor_irq_handler);
+#ifdef GSENSOR_UT
+	GSE_FUN();
+#endif
+
+	err = SCP_sensorHub_rsp_registration(ID_ACCELEROMETER, gsensor_irq_handler);
 
 	return err;
 }
 #endif
+
+
 /******************************************************************************
  * Function Configuration
 ******************************************************************************/
-static int bma253_open(struct inode *inode, struct file *file)
+static int bma250_open(struct inode *inode, struct file *file)
 {
-	file->private_data = bma253_i2c_client;
+	file->private_data = bma250_i2c_client;
 
 	if (file->private_data == NULL) {
 		GSE_ERR("null pointer!!\n");
@@ -1782,136 +1952,74 @@ static int bma253_open(struct inode *inode, struct file *file)
 	}
 	return nonseekable_open(inode, file);
 }
-
 /*----------------------------------------------------------------------------*/
-static int bma253_release(struct inode *inode, struct file *file)
+static int bma250_release(struct inode *inode, struct file *file)
 {
 	file->private_data = NULL;
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
-static bool gsensor_store_cali_in_file(const char *filename, int cali_x, int cali_y, int cali_z)
-{
-    struct file *cali_file;
-	mm_segment_t fs;
-	char data_bufx[8]={0};
-	char data_bufy[8]={0};
-	char data_bufz[8]={0};
-	char *w_bufx=data_bufx;
-	char *w_bufy=data_bufy;
-	char *w_bufz=data_bufz;
-
-    cali_file = filp_open(filename, O_CREAT | O_RDWR, 0777);
-
-    if(IS_ERR(cali_file))
-    {
-        printk("%s open error! exit! \n", __func__);
-        return false;
-    }
-    else
-    {
-		fs = get_fs();
-        set_fs(get_ds());
-
-		sprintf(w_bufx, "%d\n", cali_x);
-		sprintf(w_bufy, "%d\n", cali_y);
-		sprintf(w_bufz, "%d\n", cali_z);
-
-        cali_file->f_op->write(cali_file, w_bufx, strlen(w_bufx), &cali_file->f_pos);
-		cali_file->f_op->write(cali_file, w_bufy, strlen(w_bufy), &cali_file->f_pos);
-		cali_file->f_op->write(cali_file, w_bufz, strlen(w_bufz), &cali_file->f_pos);
-
-        set_fs(fs);
-    }
-
-    filp_close(cali_file,NULL);
-    printk("pass\n");
-    return true;
-}
-
-/*----------------------------------------------------------------------------*/
-static long bma253_unlocked_ioctl(struct file *file, unsigned int cmd,
-				  unsigned long arg)
+static long bma250_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct i2c_client *client = (struct i2c_client *)file->private_data;
-	struct bma253_i2c_data *obj =
-	    (struct bma253_i2c_data *)i2c_get_clientdata(client);
-	char strbuf[BMA253_BUFSIZE];
+	struct bma250_i2c_data *obj = (struct bma250_i2c_data *)i2c_get_clientdata(client);
+	char strbuf[BMA250_BUFSIZE] = {0};
 	void __user *data;
 	struct SENSOR_DATA sensor_data;
 	long err = 0;
-	int cali[3];
+	int cali[3] = {0};
 
 	if (_IOC_DIR(cmd) & _IOC_READ) {
-		err =
-		    !access_ok(VERIFY_WRITE, (void __user *)arg,
-			       _IOC_SIZE(cmd));
+		err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
 	} else if (_IOC_DIR(cmd) & _IOC_WRITE) {
-		err =
-		    !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+		err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
 	}
 
 	if (err) {
-		GSE_ERR("access error: %08X, (%2d, %2d)\n", cmd, _IOC_DIR(cmd),
-			_IOC_SIZE(cmd));
+		GSE_ERR("access error: %08X, (%2d, %2d)\n", cmd, _IOC_DIR(cmd), _IOC_SIZE(cmd));
 		return -EFAULT;
 	}
 
 	switch (cmd) {
 	case GSENSOR_IOCTL_INIT:
-		bma253_init_client(client, 0);
+		bma250_init_client(client, 0);
 		break;
 
 	case GSENSOR_IOCTL_READ_CHIPINFO:
-		data = (void __user *)arg;
+		data = (void __user *) arg;
 		if (data == NULL) {
 			err = -EINVAL;
 			break;
 		}
 
-		BMA253_ReadChipInfo(client, strbuf, BMA253_BUFSIZE);
-		if (copy_to_user(data, strbuf, strlen(strbuf) + 1)) {
+		BMA250_ReadChipInfo(client, strbuf, BMA250_BUFSIZE);
+		if (copy_to_user(data, strbuf, strlen(strbuf)+1)) {
 			err = -EFAULT;
 			break;
 		}
 		break;
 
 	case GSENSOR_IOCTL_READ_SENSORDATA:
-		data = (void __user *)arg;
-		if (data == NULL) {
-			err = -EINVAL;
-			break;
-		}
-		BMA253_SetPowerMode(client, true);
-		BMA253_ReadSensorData(client, strbuf, BMA253_BUFSIZE);
-		if (copy_to_user(data, strbuf, strlen(strbuf) + 1)) {
-			err = -EFAULT;
-			break;
-		}
-		break;
-
-	case GSENSOR_IOCTL_READ_GAIN:
-		data = (void __user *)arg;
+		data = (void __user *) arg;
 		if (data == NULL) {
 			err = -EINVAL;
 			break;
 		}
 
-		if (copy_to_user(data, &gsensor_gain, sizeof(struct GSENSOR_VECTOR3D))) {
+		BMA250_ReadSensorData(client, strbuf, BMA250_BUFSIZE);
+		if (copy_to_user(data, strbuf, strlen(strbuf)+1)) {
 			err = -EFAULT;
 			break;
 		}
 		break;
-
 	case GSENSOR_IOCTL_READ_RAW_DATA:
-		data = (void __user *)arg;
+		data = (void __user *) arg;
 		if (data == NULL) {
 			err = -EINVAL;
 			break;
 		}
-		BMA253_ReadRawData(client, strbuf);
-		if (copy_to_user(data, &strbuf, strlen(strbuf) + 1)) {
+		BMA250_ReadRawData(client, strbuf);
+		if (copy_to_user(data, &strbuf, strlen(strbuf)+1)) {
 			err = -EFAULT;
 			break;
 		}
@@ -1931,23 +2039,16 @@ static long bma253_unlocked_ioctl(struct file *file, unsigned int cmd,
 			GSE_ERR("Perform calibration in suspend state!!\n");
 			err = -EINVAL;
 		} else {
-			cali[BMA253_AXIS_X] =
-			    sensor_data.x * obj->reso->sensitivity /
-			    GRAVITY_EARTH_1000;
-			cali[BMA253_AXIS_Y] =
-			    sensor_data.y * obj->reso->sensitivity /
-			    GRAVITY_EARTH_1000;
-			cali[BMA253_AXIS_Z] =
-			    sensor_data.z * obj->reso->sensitivity /
-			    GRAVITY_EARTH_1000;
-			err = BMA253_WriteCalibration(client, cali);
-		}
-		gsensor_store_cali_in_file(BMA253_CAL_FILE, cali[BMA253_AXIS_X],cali[BMA253_AXIS_Y], cali[BMA253_AXIS_Z]);
+			cali[BMA250_AXIS_X] = sensor_data.x;
+			cali[BMA250_AXIS_Y] = sensor_data.y;
+			cali[BMA250_AXIS_Z] = sensor_data.z;
 
+			err = BMA250_WriteCalibration(client, cali);
+		}
 		break;
 
 	case GSENSOR_IOCTL_CLR_CALI:
-		err = BMA253_ResetCalibration(client);
+		err = BMA250_ResetCalibration(client);
 		break;
 
 	case GSENSOR_IOCTL_GET_CALI:
@@ -1956,20 +2057,14 @@ static long bma253_unlocked_ioctl(struct file *file, unsigned int cmd,
 			err = -EINVAL;
 			break;
 		}
-		err = BMA253_ReadCalibration(client, cali);
-		if (0 != err) {
+		err = BMA250_ReadCalibration(client, cali);
+		if (err) {
 			break;
 		}
+		sensor_data.x = cali[BMA250_AXIS_X];
+		sensor_data.y = cali[BMA250_AXIS_Y];
+		sensor_data.z = cali[BMA250_AXIS_Z];
 
-		sensor_data.x =
-		    cali[BMA253_AXIS_X] * GRAVITY_EARTH_1000 /
-		    obj->reso->sensitivity;
-		sensor_data.y =
-		    cali[BMA253_AXIS_Y] * GRAVITY_EARTH_1000 /
-		    obj->reso->sensitivity;
-		sensor_data.z =
-		    cali[BMA253_AXIS_Z] * GRAVITY_EARTH_1000 /
-		    obj->reso->sensitivity;
 		if (copy_to_user(data, &sensor_data, sizeof(sensor_data))) {
 			err = -EFAULT;
 			break;
@@ -1986,355 +2081,162 @@ static long bma253_unlocked_ioctl(struct file *file, unsigned int cmd,
 	return err;
 }
 
-#ifdef CONFIG_COMPAT
-static long bma253_compat_ioctl(struct file *file, unsigned int cmd,
-				unsigned long arg)
-{
-	long err = 0;
 
-	void __user *arg32 = compat_ptr(arg);
-
-	if (!file->f_op || !file->f_op->unlocked_ioctl)
-		return -ENOTTY;
-
-	switch (cmd) {
-	case COMPAT_GSENSOR_IOCTL_READ_SENSORDATA:
-		if (arg32 == NULL) {
-			err = -EINVAL;
-			break;
-		}
-
-		err =
-		    file->f_op->unlocked_ioctl(file,
-					       GSENSOR_IOCTL_READ_SENSORDATA,
-					       (unsigned long)arg32);
-		if (err) {
-			GSE_ERR
-			    ("GSENSOR_IOCTL_READ_SENSORDATA unlocked_ioctl failed.");
-			return err;
-		}
-		break;
-	case COMPAT_GSENSOR_IOCTL_SET_CALI:
-		if (arg32 == NULL) {
-			err = -EINVAL;
-			break;
-		}
-
-		err =
-		    file->f_op->unlocked_ioctl(file, GSENSOR_IOCTL_SET_CALI,
-					       (unsigned long)arg32);
-		if (err) {
-			GSE_ERR
-			    ("GSENSOR_IOCTL_SET_CALI unlocked_ioctl failed.");
-			return err;
-		}
-		break;
-	case COMPAT_GSENSOR_IOCTL_GET_CALI:
-		if (arg32 == NULL) {
-			err = -EINVAL;
-			break;
-		}
-
-		err =
-		    file->f_op->unlocked_ioctl(file, GSENSOR_IOCTL_GET_CALI,
-					       (unsigned long)arg32);
-		if (err) {
-			GSE_ERR
-			    ("GSENSOR_IOCTL_GET_CALI unlocked_ioctl failed.");
-			return err;
-		}
-		break;
-	case COMPAT_GSENSOR_IOCTL_CLR_CALI:
-		if (arg32 == NULL) {
-			err = -EINVAL;
-			break;
-		}
-
-		err =
-		    file->f_op->unlocked_ioctl(file, GSENSOR_IOCTL_CLR_CALI,
-					       (unsigned long)arg32);
-		if (err) {
-			GSE_ERR
-			    ("GSENSOR_IOCTL_CLR_CALI unlocked_ioctl failed.");
-			return err;
-		}
-		break;
-
-	default:
-		GSE_ERR("unknown IOCTL: 0x%08x\n", cmd);
-		err = -ENOIOCTLCMD;
-		break;
-
-	}
-
-	return err;
-}
-#endif
 /*----------------------------------------------------------------------------*/
-static struct file_operations bma253_fops = {
-	.owner = THIS_MODULE,
-	.open = bma253_open,
-	.release = bma253_release,
-	.unlocked_ioctl = bma253_unlocked_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl = bma253_compat_ioctl,
-#endif
+static struct file_operations bma250_fops = {
+	.open = bma250_open,
+	.release = bma250_release,
+	.unlocked_ioctl = bma250_unlocked_ioctl,
 };
-
 /*----------------------------------------------------------------------------*/
-static struct miscdevice bma253_device = {
+static struct miscdevice bma250_device = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "gsensor",
-	.fops = &bma253_fops,
+	.fops = &bma250_fops,
 };
-
+#ifdef CONFIG_PM_SLEEP
 /*----------------------------------------------------------------------------*/
-#ifndef USE_EARLY_SUSPEND
-/*----------------------------------------------------------------------------*/
-static int bma253_suspend(struct i2c_client *client, pm_message_t msg)
+static int bma250_i2c_suspend(struct device *dev)
 {
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
+	struct i2c_client *client = to_i2c_client(dev);
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
 	int err = 0;
-	mutex_lock(&gsensor_scp_en_mutex);
-	if (msg.event == PM_EVENT_SUSPEND) {
-		if (obj == NULL) {
-			GSE_ERR("null pointer!!\n");
-			mutex_unlock(&gsensor_scp_en_mutex);
-			return -EINVAL;
-		}
-		atomic_set(&obj->suspend, 1);
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
-		err = BMA253_SCP_SetPowerMode(false, ID_ACCELEROMETER);
-		if (0 != err)
-#else
-		err = BMA253_SetPowerMode(obj->client, false);
-		if (0 != err)
-#endif
-		{
-			GSE_ERR("write power control fail!!\n");
-			mutex_unlock(&gsensor_scp_en_mutex);
-			return -EINVAL;
-		}
-#ifndef CONFIG_CUSTOM_KERNEL_SENSORHUB
-		BMA253_power(obj->hw, 0);
-#endif
-	}
-	mutex_unlock(&gsensor_scp_en_mutex);
-	return err;
-}
 
-/*----------------------------------------------------------------------------*/
-static int bma253_resume(struct i2c_client *client)
-{
-	struct bma253_i2c_data *obj = i2c_get_clientdata(client);
-	int err;
+	GSE_LOG("suspend function entrance");
 
-	if (obj == NULL) {
+	if (!obj) {
 		GSE_ERR("null pointer!!\n");
 		return -EINVAL;
 	}
-#ifndef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	BMA253_power(obj->hw, 1);
-#endif
 
-#ifndef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	err = bma253_init_client(client, 0);
-	if (0 != err)
-#else
-	err = BMA253_SCP_SetPowerMode(enable_status, ID_ACCELEROMETER);
-	if (0 != err)
-#endif
-	{
-		GSE_ERR("initialize client fail!!\n");
+	acc_driver_pause_polling(1);
+	atomic_set(&obj->suspend, 1);
+	mutex_lock(&gsensor_mutex);
+	err = BMA250_SetPowerMode(client, false);
+	mutex_unlock(&gsensor_mutex);
+	if (err) {
+                acc_driver_pause_polling(0);
+                atomic_set(&obj->suspend, 0);
+                GSE_ERR("write power control fail!!\n");
+        }
+	return err;
+}
 
-		return err;
+/*----------------------------------------------------------------------------*/
+static int bma250_i2c_resume(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct bma250_i2c_data *obj = i2c_get_clientdata(client);
+
+	int err = 0;
+
+	GSE_LOG("resume function entrance");
+
+	if (!obj) {
+		GSE_ERR("null pointer!!\n");
+		return -EINVAL;
 	}
+	if (acc_driver_query_polling_state() == 1) {
+		mutex_lock(&gsensor_mutex);
+		err = BMA250_SetPowerMode(client, true);
+		mutex_unlock(&gsensor_mutex);
+		if (err)
+                        GSE_ERR("initialize client fail!!\n");
+        }
 	atomic_set(&obj->suspend, 0);
-
+	acc_driver_pause_polling(0);
 	return 0;
 }
-
-/*----------------------------------------------------------------------------*/
-#else /*CONFIG_HAS_EARLY_SUSPEND is defined */
-/*----------------------------------------------------------------------------*/
-static void bma253_early_suspend(struct early_suspend *h)
-{
-	struct bma253_i2c_data *obj =
-	    container_of(h, struct bma253_i2c_data, early_drv);
-	int err;
-
-	if (obj == NULL) {
-		GSE_ERR("null pointer!!\n");
-		return;
-	}
-	atomic_set(&obj->suspend, 1);
-
-	GSE_FUN();
-	/*for debug read power control register to see the value is OK*/
-	u8 databuf[2];
-	if (bma_i2c_read_block
-	    (obj->client, BMA253_REG_POWER_CTL, databuf, 0x01)) {
-		GSE_ERR("read power ctl register err!\n");
-		return BMA253_ERR_I2C;
-	}
-	/*if the value is ff the gsensor will not work anymore, any i2c operations won't be vaild*/
-	if (databuf[0] == 0xff)
-		GSE_LOG
-		    ("before BMA253_SetPowerMode in suspend databuf = 0x%x\n",
-		     databuf[0]);
-#ifndef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	err = BMA253_SetPowerMode(obj->client, false);
-	if (err)
-#else
-	err = BMA253_SCP_SetPowerMode(false, ID_ACCELEROMETER);
-	if (err)
 #endif
-	{
-		GSE_ERR("write power control fail!!\n");
-
-		return;
-	}
-	/*for debug read power control register to see the value is OK*/
-	if (bma_i2c_read_block(obj->client, BMA253_REG_POWER_CTL, databuf, 0x01)) {
-		GSE_ERR("read power ctl register err!\n");
-		return BMA253_ERR_I2C;
-	}
-	/*if the value is ff the gsensor will not work anymore, any i2c operations won't be vaild*/
-	if (databuf[0] == 0xff)
-		GSE_LOG
-		    ("after BMA253_SetPowerMode suspend err databuf = 0x%x\n",
-		     databuf[0]);
-	sensor_suspend = 1;
-
-#ifndef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	BMA253_power(obj->hw, 0);
-#endif
-
-}
-
-/*----------------------------------------------------------------------------*/
-static void bma253_late_resume(struct early_suspend *h)
-{
-	struct bma253_i2c_data *obj =
-	    container_of(h, struct bma253_i2c_data, early_drv);
-	int err;
-
-	if (obj == NULL) {
-		GSE_ERR("null pointer!!\n");
-		return;
-	}
-#ifndef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	BMA253_power(obj->hw, 1);
-
-#endif
-
-	u8 databuf[2];
-	if (bma_i2c_read_block
-	    (obj->client, BMA253_REG_POWER_CTL, databuf, 0x01)) {
-		GSE_ERR("read power ctl register err!\n");
-
-		return BMA253_ERR_I2C;
-
-	}
-	if (databuf[0] == 0xff)
-
-		GSE_LOG("before bma253_init_client databuf = 0x%x\n",
-			databuf[0]);
-#ifndef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	err = bma253_init_client(obj->client, 0);
-	if (err)
-#else
-	err = BMA253_SCP_SetPowerMode(enable_status, ID_ACCELEROMETER);
-	if (err)
-#endif
-	{
-		GSE_ERR("initialize client fail!!\n");
-
-		return;
-	}
-
-	if (bma_i2c_read_block(obj->client, BMA253_REG_POWER_CTL, databuf, 0x01)) {
-		GSE_ERR("read power ctl register err!\n");
-
-		return BMA253_ERR_I2C;
-	}
-
-	if (databuf[0] == 0xff)
-		GSE_LOG("after bma253_init_client databuf = 0x%x\n",
-			databuf[0]);
-	sensor_suspend = 0;
-
-	atomic_set(&obj->suspend, 0);
-}
-
-/*----------------------------------------------------------------------------*/
-#endif /*USE_EARLY_SUSPEND */
 /*----------------------------------------------------------------------------*/
 static int gsensor_open_report_data(int open)
 {
-	/*should queuq work to report event if  is_report_input_direct=true*/
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
-/*if use  this typ of enable , Gsensor only enabled but not report inputEvent to HAL*/
+#ifndef CUSTOM_KERNEL_SENSORHUB
 static int gsensor_enable_nodata(int en)
 {
 	int err = 0;
 
-	if (((en == 0) && (sensor_power == false))
-	    || ((en == 1) && (sensor_power == true))) {
+#ifdef GSENSOR_UT
+	GSE_FUN();
+#endif
+
+	mutex_lock(&gsensor_mutex);
+	if (((en == 0) && (sensor_power == false)) || ((en == 1) && (sensor_power == true))) {
 		enable_status = sensor_power;
 		GSE_LOG("Gsensor device have updated!\n");
 	} else {
 		enable_status = !sensor_power;
 		if (atomic_read(&obj_i2c_data->suspend) == 0) {
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
-			err =
-			    BMA253_SCP_SetPowerMode(enable_status,
-						    ID_ACCELEROMETER);
-			if (0 == err) {
-				sensor_power = enable_status;
-			}
-#else
-			err =
-			    BMA253_SetPowerMode(obj_i2c_data->client,
-						enable_status);
-#endif
-			GSE_LOG
-			    ("Gsensor not in suspend BMA253_SetPowerMode!, enable_status = %d\n",
-			     enable_status);
+			err = BMA250_SetPowerMode(obj_i2c_data->client, enable_status);
+			printk("Gsensor not in suspend gsensor_SetPowerMode!, enable_status = %d\n", enable_status);
 		} else {
-			GSE_LOG
-			    ("Gsensor in suspend and can not enable or disable!enable_status = %d\n",
-			     enable_status);
+			printk("Gsensor in suspend and can not enable or disable!enable_status = %d\n", enable_status);
 		}
 	}
+	mutex_unlock(&gsensor_mutex);
 
-	if (err != BMA253_SUCCESS) {
+	if (err != BMA250_SUCCESS) {
 		GSE_ERR("gsensor_enable_nodata fail!\n");
 		return -1;
 	}
 
-	GSE_ERR("gsensor_enable_nodata OK!\n");
+	GSE_LOG("gsensor_enable_nodata OK!!!\n");
 	return 0;
 }
+#else
+static int scp_gsensor_enable_nodata(int en)
+{
+	int err = 0;
 
+	mutex_lock(&gsensor_mutex);
+	if (((en == 0) && (scp_sensor_power == false)) || ((en == 1) && (scp_sensor_power == true))) {
+		enable_status = scp_sensor_power;
+		GSE_LOG("Gsensor device have updated!\n");
+	} else {
+		enable_status = !scp_sensor_power;
+		if (atomic_read(&obj_i2c_data->suspend) == 0) {
+			err = BMA250_SCP_SetPowerMode(enable_status, ID_ACCELEROMETER);
+			if (0 == err) {
+				scp_sensor_power = enable_status;
+			}
+			GSE_LOG("Gsensor not in suspend gsensor_SetPowerMode!, enable_status = %d\n", enable_status);
+		} else {
+			GSE_LOG("Gsensor in suspend and can not enable or disable!enable_status = %d\n", enable_status);
+		}
+	}
+	mutex_unlock(&gsensor_mutex);
+
+	if (err != BMA250_SUCCESS) {
+		printk("scp_sensor_enable_nodata fail!\n");
+		return -1;
+	}
+
+	printk("scp_gsensor_enable_nodata OK!!!\n");
+	return 0;
+}
+#endif
 /*----------------------------------------------------------------------------*/
 static int gsensor_set_delay(u64 ns)
 {
 	int err = 0;
 	int value;
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+#ifdef CUSTOM_KERNEL_SENSORHUB
 	SCP_SENSOR_HUB_DATA req;
 	int len;
 #else
 	int sample_delay;
 #endif
 
-	value = (int)ns / 1000 / 1000;
+#ifdef GSENSOR_UT
+	GSE_FUN();
+#endif
 
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+	value = (int)ns/1000/1000;
+
+#ifdef CUSTOM_KERNEL_SENSORHUB
 	req.set_delay_req.sensorType = ID_ACCELEROMETER;
 	req.set_delay_req.action = SENSOR_HUB_SET_DELAY;
 	req.set_delay_req.delay = value;
@@ -2346,17 +2248,17 @@ static int gsensor_set_delay(u64 ns)
 	}
 #else
 	if (value <= 5) {
-		sample_delay = BMA253_BW_200HZ;
+		sample_delay = BMA250_BW_200HZ;
 	} else if (value <= 10) {
-		sample_delay = BMA253_BW_100HZ;
+		sample_delay = BMA250_BW_100HZ;
 	} else {
-		sample_delay = BMA253_BW_100HZ;
+		sample_delay = BMA250_BW_50HZ;
 	}
 
-	mutex_lock(&gsensor_scp_en_mutex);
-	err = BMA253_SetBWRate(obj_i2c_data->client, sample_delay);
-	mutex_unlock(&gsensor_scp_en_mutex);
-	if (err != BMA253_SUCCESS) {
+	mutex_lock(&gsensor_mutex);
+	err = BMA250_SetBWRate(obj_i2c_data->client, sample_delay);
+	mutex_unlock(&gsensor_mutex);
+	if (err != BMA250_SUCCESS) {
 		GSE_ERR("Set delay parameter error!\n");
 		return -1;
 	}
@@ -2364,13 +2266,13 @@ static int gsensor_set_delay(u64 ns)
 	if (value >= 50) {
 		atomic_set(&obj_i2c_data->filter, 0);
 	} else {
-#if defined(CONFIG_BMA253_LOWPASS)
-		priv->fir.num = 0;
-		priv->fir.idx = 0;
-		priv->fir.sum[BMA253_AXIS_X] = 0;
-		priv->fir.sum[BMA253_AXIS_Y] = 0;
-		priv->fir.sum[BMA253_AXIS_Z] = 0;
-		atomic_set(&priv->filter, 1);
+#if defined(CONFIG_BMA250_LOWPASS)
+		obj_i2c_data->fir.num = 0;
+		obj_i2c_data->fir.idx = 0;
+		obj_i2c_data->fir.sum[BMA250_AXIS_X] = 0;
+		obj_i2c_data->fir.sum[BMA250_AXIS_Y] = 0;
+		obj_i2c_data->fir.sum[BMA250_AXIS_Z] = 0;
+		atomic_set(&obj_i2c_data->filter, 1);
 #endif
 	}
 #endif
@@ -2379,20 +2281,18 @@ static int gsensor_set_delay(u64 ns)
 
 	return 0;
 }
-
-/*----------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------*/
 static int gsensor_get_data(int *x, int *y, int *z, int *status)
 {
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+#ifdef CUSTOM_KERNEL_SENSORHUB
 	SCP_SENSOR_HUB_DATA req;
 	int len;
 	int err = 0;
 #else
-	char buff[BMA253_BUFSIZE];
+	char buff[BMA250_BUFSIZE] = {0};
 #endif
 
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+#ifdef CUSTOM_KERNEL_SENSORHUB
 	req.get_data_req.sensorType = ID_ACCELEROMETER;
 	req.get_data_req.action = SENSOR_HUB_GET_DATA;
 	len = sizeof(req.get_data_req);
@@ -2403,74 +2303,96 @@ static int gsensor_get_data(int *x, int *y, int *z, int *status)
 	}
 
 	if (ID_ACCELEROMETER != req.get_data_rsp.sensorType ||
-	    SENSOR_HUB_GET_DATA != req.get_data_rsp.action ||
-	    0 != req.get_data_rsp.errCode) {
+		SENSOR_HUB_GET_DATA != req.get_data_rsp.action ||
+		0 != req.get_data_rsp.errCode) {
 		GSE_ERR("error : %d\n", req.get_data_rsp.errCode);
 		return req.get_data_rsp.errCode;
 	}
 
-	*x = (int)req.get_data_rsp.int16_Data[0] * GRAVITY_EARTH_1000 / 1000;
-	*y = (int)req.get_data_rsp.int16_Data[1] * GRAVITY_EARTH_1000 / 1000;
-	*z = (int)req.get_data_rsp.int16_Data[2] * GRAVITY_EARTH_1000 / 1000;
-	GSE_ERR("x = %d, y = %d, z = %d\n", *x, *y, *z);
-
+	*x = (int)req.get_data_rsp.int16_Data[0]*GRAVITY_EARTH_1000/1000;
+	*y = (int)req.get_data_rsp.int16_Data[1]*GRAVITY_EARTH_1000/1000;
+	*z = (int)req.get_data_rsp.int16_Data[2]*GRAVITY_EARTH_1000/1000;
 	*status = SENSOR_STATUS_ACCURACY_MEDIUM;
+
+	if (atomic_read(&obj_i2c_data->trace) & ADX_TRC_IOCTL) {
+		GSE_LOG("x = %d, y = %d, z = %d\n", *x, *y, *z);
+	}
+
 #else
-	mutex_lock(&gsensor_scp_en_mutex);
-	BMA253_ReadSensorData(obj_i2c_data->client, buff, BMA253_BUFSIZE);
-	mutex_unlock(&gsensor_scp_en_mutex);
+	mutex_lock(&gsensor_mutex);
+	BMA250_ReadSensorData(obj_i2c_data->client, buff, BMA250_BUFSIZE);
+	mutex_unlock(&gsensor_mutex);
 	sscanf(buff, "%x %x %x", x, y, z);
 	*status = SENSOR_STATUS_ACCURACY_MEDIUM;
 #endif
+
 	return 0;
 }
 
+
+
+static int gsensor_acc_batch(int flag, int64_t samplingPeriodNs,
+					int64_t maxBatchReportLatencyNs)
+{
+	int value = 0;
+
+	value = (int)samplingPeriodNs / 1000 / 1000;
+	GSE_ERR("gsensor acc set delay = (%d) ok.\n", value);
+	return gsensor_set_delay(samplingPeriodNs);
+}
+static int gsensor_acc_flush(void)
+{
+	return acc_flush_report();
+}
 /*----------------------------------------------------------------------------*/
-static int bma253_i2c_probe(struct i2c_client *client,
-			    const struct i2c_device_id *id)
+static int bma250_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct i2c_client *new_client;
-	struct bma253_i2c_data *obj;
-	struct acc_control_path ctl = { 0 };
-	struct acc_data_path data = { 0 };
+	struct bma250_i2c_data *obj;
+	struct acc_control_path ctl = {0};
+	struct acc_data_path data = {0};
+	s16 idmedata[6] = {0};
 	int err = 0;
-	int retry = 0;
 	GSE_FUN();
 	obj = kzalloc(sizeof(*obj), GFP_KERNEL);
-	if (!(obj)) {
+	if (!obj) {
 		err = -ENOMEM;
 		goto exit;
 	}
+        err = get_accel_dts_func(client->dev.of_node, hw);
+        if (err < 0)
+        {
+                GSE_ERR("get dts info fail\n");
+                err = -EFAULT;
+                goto exit_kfree;
+        }
 
-	memset(obj, 0, sizeof(struct bma253_i2c_data));
+
+	memset(obj, 0, sizeof(struct bma250_i2c_data));
 
 	obj->hw = hw;
-
 	err = hwmsen_get_convert(obj->hw->direction, &obj->cvt);
-	if (0 != err) {
+	if (err) {
 		GSE_ERR("invalid direction: %d\n", obj->hw->direction);
-		goto exit;
+		goto exit_kfree;
 	}
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
+
+#ifdef CUSTOM_KERNEL_SENSORHUB
 	INIT_WORK(&obj->irq_work, gsensor_irq_work);
 #endif
-
 	obj_i2c_data = obj;
 	obj->client = client;
-/*
-#ifdef FPGA_EARLY_PORTING
-	obj->client->timing = 100;
-#else
-	obj->client->timing = 400;
-#endif
-*/
 	new_client = obj->client;
 	i2c_set_clientdata(new_client, obj);
 
 	atomic_set(&obj->trace, 0);
 	atomic_set(&obj->suspend, 0);
 
-#ifdef CONFIG_BMA253_LOWPASS
+#ifdef CUSTOM_KERNEL_SENSORHUB
+	obj->SCP_init_done = 0;
+#endif
+
+#ifdef CONFIG_BMA250_LOWPASS
 	if (obj->hw->firlen > C_MAX_FIR_LENGTH) {
 		atomic_set(&obj->firlen, C_MAX_FIR_LENGTH);
 	} else {
@@ -2480,223 +2402,150 @@ static int bma253_i2c_probe(struct i2c_client *client,
 	if (atomic_read(&obj->firlen) > 0) {
 		atomic_set(&obj->fir_en, 1);
 	}
+
 #endif
+	bma250_i2c_client = new_client;
 
-	bma253_i2c_client = new_client;
-
-	for (retry = 0; retry < 3; retry++) {
-		err = bma253_init_client(new_client, 1);
-		if (0 != err) {
-			GSE_ERR("bma253_device init cilent fail time: %d\n",
-				retry);
-			continue;
-		}
-	}
-	if (err != 0)
+	err = bma250_init_client(new_client, 1);
+	if (err) {
 		goto exit_init_failed;
-	err = misc_register(&bma253_device);
-	if (0 != err) {
-		GSE_ERR("bma253_device register failed\n");
+	}
+
+	err = misc_register(&bma250_device);
+	if (err) {
+		GSE_ERR("bma250_device register failed\n");
 		goto exit_misc_device_register_failed;
 	}
-	err =
-	     bma253_create_attr(&bma253_init_info.platform_diver_addr->driver);
-	if (0 != err) {
+
+	err = bma250_create_attr(&bma250_init_info.platform_diver_addr->driver);
+	if (err) {
 		GSE_ERR("create attribute err = %d\n", err);
 		goto exit_create_attr_failed;
 	}
+
 	ctl.open_report_data = gsensor_open_report_data;
+
 	ctl.enable_nodata = gsensor_enable_nodata;
-	ctl.set_delay = gsensor_set_delay;
-	/*ctl.batch = gsensor_set_batch;*/
+
+	ctl.set_delay  = gsensor_set_delay;
 	ctl.is_report_input_direct = false;
-#ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
-	ctl.is_support_batch = obj->hw->is_batch_supported;
-#else
+
 	ctl.is_support_batch = false;
-#endif
+
+	ctl.batch = gsensor_acc_batch;
+	ctl.flush = gsensor_acc_flush;
 
 	err = acc_register_control_path(&ctl);
 	if (err) {
 		GSE_ERR("register acc control path err\n");
-		goto exit_kfree;
+		goto exit_create_attr_failed;
 	}
+
+	GSE_LOG("acc_register_control_path sucess\n");
 
 	data.get_data = gsensor_get_data;
 	data.vender_div = 1000;
 	err = acc_register_data_path(&data);
 	if (err) {
 		GSE_ERR("register acc data path err\n");
-		goto exit_kfree;
-	}
-
-	err = batch_register_support_info(ID_ACCELEROMETER, ctl.is_support_batch, 102, 0);
-	if (err) {
-		GSE_ERR("register gsensor batch support err = %d\n", err);
 		goto exit_create_attr_failed;
 	}
-#ifdef USE_EARLY_SUSPEND
-	obj->early_drv.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING - 2,
-	    obj->early_drv.suspend = bma253_early_suspend,
-	    obj->early_drv.resume = bma253_late_resume,
-	    register_early_suspend(&obj->early_drv);
-#endif
+
+	GSE_LOG("acc_register_data_path sucess\n");
 
 	gsensor_init_flag = 0;
+
+	idme_get_sensorcal(idmedata);
+
+/*	printk("lsm6ds3_i2c_probe idmedata %x, %x, %x, %x, %x, %x\n",
+			idmedata[0], idmedata[1], idmedata[2],
+			idmedata[3], idmedata[4], idmedata[5]);*/
+
+	accel_xyz_offset[0] = idmedata[0];
+	accel_xyz_offset[1] = idmedata[1];
+	accel_xyz_offset[2] = idmedata[2];
+	obj->cali_sw[BMA250_AXIS_X] = accel_xyz_offset[0];
+	obj->cali_sw[BMA250_AXIS_Y] = accel_xyz_offset[1];
+	obj->cali_sw[BMA250_AXIS_Z] = accel_xyz_offset[2];
+
 	GSE_LOG("%s: OK\n", __func__);
+	GSE_LOG("bma250_i2c_probe sucess\n");
+
+#if GSENSOR_CALI
+	kthread_run(readcali, NULL, "readcali");
+#endif
 	return 0;
 
-exit_create_attr_failed:
-	misc_deregister(&bma253_device);
-exit_misc_device_register_failed:
-exit_init_failed:
-exit_kfree:
-      kfree(obj);
-exit:
+	exit_create_attr_failed:
+	misc_deregister(&bma250_device);
+	exit_misc_device_register_failed:
+	exit_init_failed:
+	exit_kfree:
+	kfree(obj);
+	exit:
 	GSE_ERR("%s: err = %d\n", __func__, err);
 	gsensor_init_flag = -1;
 	return err;
 }
 
 /*----------------------------------------------------------------------------*/
-static int bma253_i2c_remove(struct i2c_client *client)
+static int bma250_i2c_remove(struct i2c_client *client)
 {
 	int err = 0;
-	err =
-	     bma253_delete_attr(&bma253_init_info.platform_diver_addr->driver);
-	if (0 != err) {
-		GSE_ERR("bma253_delete_attr fail: %d\n", err);
-	}
-	err = misc_deregister(&bma253_device);
-	if (0 != err) {
-		GSE_ERR("misc_deregister fail: %d\n", err);
+
+	err = bma250_delete_attr(&bma250_init_info.platform_diver_addr->driver);
+	if (err) {
+		GSE_ERR("bma150_delete_attr fail: %d\n", err);
 	}
 
-	bma253_i2c_client = NULL;
+	misc_deregister(&bma250_device);
+	bma250_i2c_client = NULL;
 	i2c_unregister_device(client);
 	kfree(i2c_get_clientdata(client));
-	return 0;
-}
-
-/*----------------------------------------------------------------------------*/
-static int idme_get_gsensorcal_calibration(void){
-
-	struct i2c_client *client = bma253_i2c_client;
-	int err;
-	int dat[BMA253_AXES_NUM];
-	char *gsensor_cal=NULL;
-	char *sepstr;
-	char *sepdata;
-
-	long data_x;
-	long data_y;
-	long data_z;
-
-	gsensor_cal = idme_get_sensorcal();
-	if (gsensor_cal==NULL){
-		printk("idme get sensorcal fail!\n");
-		return -1;
-	}else{
-		printk("gsensor_cal %s\n", gsensor_cal);
-	}
-
-	sepstr = gsensor_cal;
-
-	sepdata=strsep(&sepstr,"\n");
-	if (sepdata != NULL && sepstr != NULL){
-		printk("gsensor_cal x %s\n", sepdata);
-		err = kstrtol(sepdata, 10, &data_x);
-		if (err){
-			GSE_ERR("calibration data x char to long fail\n");
-			return -1;
-		}
-	}else{
-		GSE_ERR("strsep calibration data fail\n");
-		return -1;
-	}
-
-	sepdata=strsep(&sepstr,"\n");
-	if (sepdata != NULL && sepstr != NULL){
-		printk("gsensor_cal y %s\n", sepdata);
-		err = kstrtol(sepdata, 10, &data_y);
-		if (err){
-			GSE_ERR("calibration data y char to long fail\n");
-			return -1;
-		}
-		printk("gsensor_cal z %s\n", sepstr);
-		err = kstrtol(sepstr, 10, &data_z);
-		if (err){
-			GSE_ERR("calibration data z char to long fail\n");
-			return -1;
-		}
-	}else{
-		GSE_ERR("strsep calibration data fail\n");
-		return -1;
-	}
-
-	dat[BMA253_AXIS_X] = (int)data_x;
-	dat[BMA253_AXIS_Y] = (int)data_y;
-	dat[BMA253_AXIS_Z] = (int)data_z;
-	err = BMA253_WriteCalibration(client, dat);
-	if (0 != err) {
-		GSE_ERR("write calibration err = %d\n", err);
-	}
 
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
 static int gsensor_local_init(void)
 {
-	GSE_FUN();
 
-	BMA253_power(hw, 1);
-	if (i2c_add_driver(&bma253_i2c_driver)) {
+	BMA250_power(hw, 1);
+	if (i2c_add_driver(&bma250_i2c_driver)) {
 		GSE_ERR("add driver error\n");
 		return -1;
 	}
 	if (-1 == gsensor_init_flag) {
 		return -1;
 	}
-	if (idme_get_gsensorcal_calibration() == -1){
-		GSE_ERR("idme get gsensor value and calibration fail\n");
-	}
-
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
 static int gsensor_remove(void)
 {
 	GSE_FUN();
-	BMA253_power(hw, 0);
-	i2c_del_driver(&bma253_i2c_driver);
+	BMA250_power(hw, 0);
+	i2c_del_driver(&bma250_i2c_driver);
 	return 0;
 }
 
 /*----------------------------------------------------------------------------*/
-static int __init bma253_init(void)
+static int __init bma250_init(void)
 {
-	GSE_FUN();
-	hw = get_accel_dts_func(COMPATIABLE_NAME, hw);
-	if (!hw)
-		GSE_ERR("get dts info fail\n");
-	GSE_LOG("%s: i2c_number=%d\n", __func__, hw->i2c_num);
 
-	acc_driver_add(&bma253_init_info);
+	GSE_FUN();
+	acc_driver_add(&bma250_init_info);
+
 	return 0;
 }
-
 /*----------------------------------------------------------------------------*/
-static void __exit bma253_exit(void)
+static void __exit bma250_exit(void)
 {
 	GSE_FUN();
 }
-
 /*----------------------------------------------------------------------------*/
-module_init(bma253_init);
-module_exit(bma253_exit);
+module_init(bma250_init);
+module_exit(bma250_exit);
 /*----------------------------------------------------------------------------*/
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("BMA253 I2C driver");
+MODULE_DESCRIPTION("BMA250 I2C driver");
 MODULE_AUTHOR("Xiaoli.li@mediatek.com");

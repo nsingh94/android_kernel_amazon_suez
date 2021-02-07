@@ -1,15 +1,13 @@
-/*
-* Copyright (C) 2017 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
+
+/* Lite-On LTR-501ALS Linux Driver
+ *
+ * Copyright (C) 2011 Lite-On Technology Corp (Singapore)
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *
+ */
 
 #ifndef _LTR559_H
 #define _LTR559_H
@@ -46,34 +44,32 @@
 #define LTR559_PS_DATA_0	0x8D
 #define LTR559_PS_DATA_1	0x8E
 
-
 /* Basic Operating Modes */
-#define MODE_ALS_ON_Range1	0x01	/* /for als gain x1 */
-#define MODE_ALS_ON_Range2	0x05	/* /for als  gain x2 */
-#define MODE_ALS_ON_Range3	0x09	/* /for als  gain x4 */
-#define MODE_ALS_ON_Range4	0x0D	/* /for als gain x8 */
-#define MODE_ALS_ON_Range5	0x19	/* /for als gain x48 */
-#define MODE_ALS_ON_Range6	0x1D	/* /for als gain x96 */
+#define MODE_ALS_Range1	0x00	///for als gain x1
+#define MODE_ALS_Range2	0x04	///for als  gain x2
+#define MODE_ALS_Range3	0x08	///for als  gain x4
+#define MODE_ALS_Range4	0x0C	///for als gain x8
+#define MODE_ALS_Range5	0x18	///for als gain x48
+#define MODE_ALS_Range6	0x1C	///for als gain x96
 
 #define MODE_ALS_StdBy		0x00
 
 #define ALS_RANGE_64K	1
-#define ALS_RANGE_32K	2
-#define ALS_RANGE_16K	4
-#define ALS_RANGE_8K	8
+#define ALS_RANGE_32K 	2
+#define ALS_RANGE_16K 	4
+#define ALS_RANGE_8K 	8
 #define ALS_RANGE_1300 48
-#define ALS_RANGE_600	96
+#define ALS_RANGE_600 	96
 
-
-#define MODE_PS_ON_Gain16	0x03
-#define MODE_PS_ON_Gain32	0x0B
-#define MODE_PS_ON_Gain64	0x0F
+#define MODE_PS_Gain16	0x00
+#define MODE_PS_Gain32	0x08
+#define MODE_PS_Gain64	0x0C
 
 #define MODE_PS_StdBy		0x00
 
-#define PS_RANGE16	1
+#define PS_RANGE16 	1
 #define PS_RANGE32	4
-#define PS_RANGE64	8
+#define PS_RANGE64 	8
 
 /*
  * Magic Number
@@ -106,5 +102,6 @@
  * For IRQ numbers used, see /proc/interrupts.
  */
 #define GPIO_INT_NO	32
+extern struct platform_device *get_alsps_platformdev(void);
 
 #endif
