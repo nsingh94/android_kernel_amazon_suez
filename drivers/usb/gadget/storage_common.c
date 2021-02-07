@@ -141,9 +141,6 @@ struct fsg_lun {
 	unsigned int	blkbits;	/* Bits of logical block size of bound block device */
 	unsigned int	blksize;	/* logical block size of bound block device */
 	struct device	dev;
-#ifdef CONFIG_MTK_ICUSB_SUPPORT
-	char isICUSB;
-#endif
 };
 
 static inline bool fsg_lun_is_open(struct fsg_lun *curlun)
@@ -445,20 +442,6 @@ static int fsg_lun_open(struct fsg_lun *curlun, const char *filename)
 	loff_t				min_sectors;
 	unsigned int			blkbits;
 	unsigned int			blksize;
-
-#ifdef CONFIG_MTK_ICUSB_SUPPORT
-#define ICUSB_STORAGE_LABEL	"/dev/block/vold/8:"
-	if(strstr(filename, ICUSB_STORAGE_LABEL))
-	{
-		printk(KERN_WARNING "filename : %s, set isICUSB to 0\n", filename);
-		curlun->isICUSB = 1;
-	}
-	else
-	{
-		printk(KERN_WARNING "filename : %s, set isICUSB to 1\n", filename);
-		curlun->isICUSB = 0;
-	}
-#endif
 
 	/* R/W if we can, R/O if we must */
 	ro = curlun->initially_ro;

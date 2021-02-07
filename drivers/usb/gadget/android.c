@@ -57,13 +57,6 @@
 #include "u_ether.c"
 
 
-#ifdef CONFIG_MTK_C2K_SUPPORT
-#include "viatel_rawbulk.h"
-int rawbulk_bind_config(struct usb_configuration *c, int transfer_id);
-int rawbulk_function_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl);
-#endif
-
-
 MODULE_AUTHOR("Mike Lockwood");
 MODULE_DESCRIPTION("Android Composite USB Driver");
 MODULE_LICENSE("GPL");
@@ -1496,21 +1489,8 @@ static int mass_storage_function_init(struct android_usb_function *f,
 	if (!config)
 		return -ENOMEM;
 
-#ifdef CONFIG_MTK_MULTI_STORAGE_SUPPORT
-#ifdef CONFIG_MTK_SHARED_SDCARD
 #define NLUN_STORAGE 1
-#else
-#define NLUN_STORAGE 2
-#endif
-#else
-#define NLUN_STORAGE 1
-#endif
-
-#ifdef CONFIG_MTK_ICUSB_SUPPORT
-#define NLUN_ICUSB (1)
-#else
 #define NLUN_ICUSB (0)
-#endif
 
 	config->fsg.nluns = NLUN_STORAGE + NLUN_ICUSB;
 
@@ -1738,86 +1718,6 @@ static struct android_usb_function audio_source_function = {
 	.attributes	= audio_source_function_attributes,
 };
 
-#ifndef CONFIG_MTK_ECCCI_C2K
-#ifdef CONFIG_MTK_C2K_SUPPORT
-static int rawbulk_function_init(struct android_usb_function *f,
-					struct usb_composite_dev *cdev)
-{
-	return 0;
-}
-
-static void rawbulk_function_cleanup(struct android_usb_function *f)
-{
-	;
-}
-
-static int rawbulk_function_bind_config(struct android_usb_function *f,
-						struct usb_configuration *c)
-{
-    char *i = f->name + strlen("via_");
-    if (!strncmp(i, "modem", 5))
-        return rawbulk_bind_config(c, RAWBULK_TID_MODEM);
-    else if (!strncmp(i, "ets", 3))
-        return rawbulk_bind_config(c, RAWBULK_TID_ETS);
-    else if (!strncmp(i, "atc", 3))
-        return rawbulk_bind_config(c, RAWBULK_TID_AT);
-    else if (!strncmp(i, "pcv", 3))
-        return rawbulk_bind_config(c, RAWBULK_TID_PCV);
-    else if (!strncmp(i, "gps", 3))
-        return rawbulk_bind_config(c, RAWBULK_TID_GPS);
-    return -EINVAL;
-}
-
-static int rawbulk_function_modem_ctrlrequest(struct android_usb_function *f,
-						struct usb_composite_dev *cdev,
-						const struct usb_ctrlrequest *c)
-{
-    if ((c->bRequestType & USB_RECIP_MASK) == USB_RECIP_DEVICE &&
-            (c->bRequestType & USB_TYPE_MASK) == USB_TYPE_VENDOR) {
-        struct rawbulk_function *fn = rawbulk_lookup_function(RAWBULK_TID_MODEM);
-        return rawbulk_function_setup(&fn->function, c);
-    }
-    return -1;
-}
-
-static struct android_usb_function rawbulk_modem_function = {
-	.name		= "via_modem",
-	.init		= rawbulk_function_init,
-	.cleanup	= rawbulk_function_cleanup,
-	.bind_config	= rawbulk_function_bind_config,
-	.ctrlrequest	= rawbulk_function_modem_ctrlrequest,
-};
-
-static struct android_usb_function rawbulk_ets_function = {
-	.name		= "via_ets",
-	.init		= rawbulk_function_init,
-	.cleanup	= rawbulk_function_cleanup,
-	.bind_config	= rawbulk_function_bind_config,
-};
-
-static struct android_usb_function rawbulk_atc_function = {
-	.name		= "via_atc",
-	.init		= rawbulk_function_init,
-	.cleanup	= rawbulk_function_cleanup,
-	.bind_config	= rawbulk_function_bind_config,
-};
-
-static struct android_usb_function rawbulk_pcv_function = {
-	.name		= "via_pcv",
-	.init		= rawbulk_function_init,
-	.cleanup	= rawbulk_function_cleanup,
-	.bind_config	= rawbulk_function_bind_config,
-};
-
-static struct android_usb_function rawbulk_gps_function = {
-	.name		= "via_gps",
-	.init		= rawbulk_function_init,
-	.cleanup	= rawbulk_function_cleanup,
-	.bind_config	= rawbulk_function_bind_config,
-};
-#endif
-#endif
-
 #ifdef CONFIG_SND_RAWMIDI
 static int midi_function_init(struct android_usb_function *f,
 					struct usb_composite_dev *cdev)
@@ -1891,15 +1791,6 @@ static struct android_usb_function *supported_functions[] = {
 	&audio_source_function,
 #ifdef CONFIG_SND_RAWMIDI
 	&midi_function,
-#endif
-#ifndef CONFIG_MTK_ECCCI_C2K
-#ifdef CONFIG_MTK_C2K_SUPPORT
-	&rawbulk_modem_function,
-	&rawbulk_ets_function,
-	&rawbulk_atc_function,
-	&rawbulk_pcv_function,
-	&rawbulk_gps_function,
-#endif
 #endif
 #ifdef CONFIG_USB_F_LOOPBACK
 	&loopback_function,

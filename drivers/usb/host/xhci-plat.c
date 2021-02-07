@@ -21,10 +21,6 @@
 
 #include "xhci.h"
 
-#ifdef CONFIG_USB_XHCI_MTK
-#include <xhci-mtk.h>
-#endif
-
 #include "xhci-mvebu.h"
 #include "xhci-rcar.h"
 #ifdef CONFIG_SSUSB_MTK_XHCI
@@ -47,14 +43,6 @@ static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 	 * dev struct in order to setup MSI
 	 */
 	xhci->quirks |= XHCI_PLAT;
-#ifdef CONFIG_USB_XHCI_MTK
-	/*
-	 * MTK host controller gives a spurious successful event after a
-	 * short transfer. Ignore it.
-	*/
-	xhci->quirks |= XHCI_SPURIOUS_SUCCESS;
-	xhci->quirks |= XHCI_LPM_SUPPORT;
-#endif
 #ifdef CONFIG_SSUSB_MTK_XHCI
 	xhci->quirks |= XHCI_SPURIOUS_SUCCESS;
 	xhci->quirks |= XHCI_LPM_SUPPORT;
@@ -142,19 +130,6 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 	driver = &xhci_plat_hc_driver;
 
-#ifdef CONFIG_USB_XHCI_MTK  /* device tree support */
-	irq = platform_get_irq_byname(pdev, XHCI_DRIVER_NAME);
-	if (irq < 0)
-		return -ENODEV;
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, XHCI_BASE_REGS_ADDR_RES_NAME);
-	if (!res)
-		return -ENODEV;
-
-	pdev->dev.coherent_dma_mask = XHCI_DMA_BIT_MASK;
-	pdev->dev.dma_mask = &xhci_dma_mask;
-	pdev->dev.release = xhci_hcd_release;
-#else
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return -ENODEV;
@@ -162,7 +137,7 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
 		return -ENODEV;
-#endif
+
 	/* Initialize dma_mask and coherent_dma_mask to 32-bits */
 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret)
@@ -241,9 +216,6 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	#endif
 	if (ret)
 		goto put_usb3_hcd;
-#ifdef CONFIG_USB_XHCI_MTK
-	mtk_xhci_vbus_on(pdev);
-#endif
 	return 0;
 
 put_usb3_hcd:
@@ -268,9 +240,6 @@ static int xhci_plat_remove(struct platform_device *dev)
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
 	struct clk *clk = xhci->clk;
 
-#ifdef CONFIG_USB_XHCI_MTK
-	mtk_xhci_vbus_off(dev);
-#endif
 	xhci->xhc_state |= XHCI_STATE_REMOVING;
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_put_hcd(xhci->shared_hcd);
@@ -348,19 +317,6 @@ static struct platform_driver usb_xhci_driver = {
 };
 MODULE_ALIAS("platform:xhci-hcd");
 
-#ifdef CONFIG_USB_XHCI_MTK
-int xhci_register_plat(void)
-{
-	xhci_init_driver(&xhci_plat_hc_driver, xhci_plat_setup);
-	xhci_plat_hc_driver.start = xhci_plat_start;
-	return platform_driver_register(&usb_xhci_driver);
-}
-
-void xhci_unregister_plat(void)
-{
-	platform_driver_unregister(&usb_xhci_driver);
-}
-#else
 static int __init xhci_plat_init(void)
 {
 	xhci_init_driver(&xhci_plat_hc_driver, xhci_plat_setup);
@@ -374,7 +330,6 @@ static void __exit xhci_plat_exit(void)
 	platform_driver_unregister(&usb_xhci_driver);
 }
 module_exit(xhci_plat_exit);
-#endif
 
 MODULE_DESCRIPTION("xHCI Platform Host Controller Driver");
 MODULE_LICENSE("GPL");

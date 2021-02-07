@@ -16,16 +16,12 @@ xhci-hcd-y := xhci.o xhci-mem.o
 xhci-hcd-y += xhci-ring.o xhci-hub.o xhci-dbg.o
 xhci-hcd-y += xhci-trace.o
 
-xhci-hcd-$(CONFIG_SSUSB_MTK_XHCI_TEST_MODE) += xhci-mtk-test.o xhci-mtk.o
 xhci-plat-hcd-y := xhci-plat.o
 ifneq ($(CONFIG_USB_XHCI_MVEBU), )
 	xhci-plat-hcd-y		+= xhci-mvebu.o
 endif
 ifneq ($(CONFIG_USB_XHCI_RCAR), )
 	xhci-plat-hcd-y		+= xhci-rcar.o
-endif
-ifneq ($(CONFIG_USB_XHCI_MTK), )
-	xhci-plat-hcd-y		+= xhci-mtk.o
 endif
 	xhci-hcd-$(CONFIG_SSUSB_MTK_XHCI)		+= xhci-ssusb-mtk.o xhci-plat.o
 obj-$(CONFIG_USB_WHCI_HCD)	+= whci/

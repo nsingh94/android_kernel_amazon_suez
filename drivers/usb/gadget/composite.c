@@ -1702,11 +1702,8 @@ int composite_dev_prepare(struct usb_composite_driver *composite,
 	if (!cdev->req)
 		return -ENOMEM;
 
-#if defined(CONFIG_64BIT) && defined(CONFIG_MTK_LM_MODE)
-	cdev->req->buf = kmalloc(USB_COMP_EP0_BUFSIZ, GFP_KERNEL | GFP_DMA);
-#else
 	cdev->req->buf = kmalloc(USB_COMP_EP0_BUFSIZ, GFP_KERNEL);
-#endif
+
 	if (!cdev->req->buf)
 		goto fail;
 

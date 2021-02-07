@@ -832,11 +832,7 @@ first_try:
 
 		/* Allocate & copy */
 		if (!halt && !data) {
-#if defined(CONFIG_64BIT) && defined(CONFIG_MTK_LM_MODE)
-			data = kzalloc(buffer_len, GFP_KERNEL | GFP_DMA);
-#else
 			data = kzalloc(buffer_len, GFP_KERNEL);
-#endif
 			if (unlikely(!data))
 				return -ENOMEM;
 

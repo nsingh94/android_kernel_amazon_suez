@@ -800,7 +800,3 @@ config USB_HCD_TEST_MODE
 	  This option is of interest only to developers who need to validate
 	  their USB hardware designs.  It is not needed for normal use.  If
 	  unsure, say N.
-
-config SSUSB_MTK_XHCI_TEST_MODE
-	bool "MTK SSUSB test mode"
-	default n

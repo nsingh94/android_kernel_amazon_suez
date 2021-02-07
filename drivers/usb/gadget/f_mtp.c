@@ -386,11 +386,7 @@ struct {
 };
 
 #define MSFT_bMS_VENDOR_CODE	1
-#ifdef CONFIG_MTK_TC1_FEATURE
-#define USB_MTP_FUNCTIONS		8
-#else
 #define USB_MTP_FUNCTIONS		6
-#endif
 
 #define USB_MTP			"mtp\n"
 #define USB_MTP_ACM		"mtp,acm\n"
@@ -398,10 +394,6 @@ struct {
 #define USB_MTP_ADB_ACM	        "mtp,adb,acm\n"
 #define USB_MTP_UMS		"mtp,mass_storage\n"
 #define USB_MTP_UMS_ADB	        "mtp,mass_storage,adb\n"
-#ifdef CONFIG_MTK_TC1_FEATURE
-#define USB_TC1_MTP_ADB	        "acm,gser,mtp,adb\n"
-#define USB_TC1_MTP		"acm,gser,mtp\n"
-#endif
 
 static char * USB_MTP_FUNC[USB_MTP_FUNCTIONS] =
 {
@@ -411,10 +403,6 @@ static char * USB_MTP_FUNC[USB_MTP_FUNCTIONS] =
 	USB_MTP_ADB_ACM,
 	USB_MTP_UMS,
 	USB_MTP_UMS_ADB,
-#ifdef CONFIG_MTK_TC1_FEATURE
-	USB_TC1_MTP_ADB,
-	USB_TC1_MTP
-#endif
 };
 
 
@@ -525,97 +513,6 @@ struct {
 	},
 };
 
-#ifdef CONFIG_MTK_TC1_FEATURE
-struct {
-	struct mtp_ext_config_desc_header	header;
-	struct mtp_ext_config_desc_function    function1;
-	struct mtp_ext_config_desc_function    function2;
-	struct mtp_ext_config_desc_function    function3;
-	struct mtp_ext_config_desc_function    function4;
-} mtp_ext_config_desc_4 = {
-	.header = {
-		.dwLength = __constant_cpu_to_le32(sizeof(mtp_ext_config_desc_4)),
-		.bcdVersion = __constant_cpu_to_le16(0x0100),
-		.wIndex = __constant_cpu_to_le16(4),
-		/* .bCount = __constant_cpu_to_le16(1), */
-		.bCount = 0x04,
-		.reserved = { 0 },
-	},
-	.function1 =
-	{
-	.bFirstInterfaceNumber = 0,
-	.bInterfaceCount = 2,
-	.compatibleID = { 0 },
-	.subCompatibleID = { 0 },
-	.reserved = { 0 },
-	},
-	.function2 =
-	{
-	.bFirstInterfaceNumber = 2,
-	.bInterfaceCount = 1,
-	.compatibleID = { 0 },
-	.subCompatibleID = { 0 },
-	.reserved = { 0 },
-	},
-	.function3 =
-	{
-	.bFirstInterfaceNumber = 3,
-	.bInterfaceCount = 1,
-	.compatibleID = { 'M', 'T', 'P', 0, 0, 0, 0, 0 },
-	.subCompatibleID = { 0 },
-	.reserved = { 0 },
-	},
-	.function4 =
-	{
-	.bFirstInterfaceNumber = 4,
-	.bInterfaceCount = 1,
-	.compatibleID = { 0 },
-	.subCompatibleID = { 0 },
-	.reserved = { 0 },
-	},
-};
-
-struct {
-	struct mtp_ext_config_desc_header	header;
-	struct mtp_ext_config_desc_function    function1;
-	struct mtp_ext_config_desc_function    function2;
-	struct mtp_ext_config_desc_function    function3;
-} mtp_ext_config_desc_5 = {
-	.header = {
-		.dwLength = __constant_cpu_to_le32(sizeof(mtp_ext_config_desc_5)),
-		.bcdVersion = __constant_cpu_to_le16(0x0100),
-		.wIndex = __constant_cpu_to_le16(4),
-		/* .bCount = __constant_cpu_to_le16(1), */
-		.bCount = 0x03,
-		.reserved = { 0 },
-	},
-	.function1 =
-	{
-	.bFirstInterfaceNumber = 0,
-	.bInterfaceCount = 2,
-	.compatibleID = { 0 },
-	.subCompatibleID = { 0 },
-	.reserved = { 0 },
-	},
-	.function2 =
-	{
-	.bFirstInterfaceNumber = 2,
-	.bInterfaceCount = 1,
-	.compatibleID = { 0 },
-	.subCompatibleID = { 0 },
-	.reserved = { 0 },
-	},
-	.function3 =
-	{
-	.bFirstInterfaceNumber = 3,
-	.bInterfaceCount = 1,
-	.compatibleID = { 'M', 'T', 'P', 0, 0, 0, 0, 0 },
-	.subCompatibleID = { 0 },
-	.reserved = { 0 },
-	},
-};
-#endif
-
 struct mtp_device_status {
 	__le16	wLength;
 	__le16	wCode;
@@ -650,11 +547,8 @@ static struct usb_request *mtp_request_new(struct usb_ep *ep, int buffer_size)
 		return NULL;
 
 	/* now allocate buffers for the requests */
-#if defined(CONFIG_64BIT) && defined(CONFIG_MTK_LM_MODE)
-	req->buf = kmalloc(buffer_size, GFP_KERNEL | GFP_DMA);
-#else
 	req->buf = kmalloc(buffer_size, GFP_KERNEL);
-#endif
+
 	if (!req->buf) {
 		usb_ep_free_request(ep, req);
 		return NULL;
@@ -1871,18 +1765,6 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 						w_length : sizeof(mtp_ext_config_desc_3));
 				memcpy(cdev->req->buf, &mtp_ext_config_desc_3, value);
 				break;
-			#ifdef CONFIG_MTK_TC1_FEATURE
-			case 6:		/* acm,gser,mtp,adb, with acm, xp failed so far */
-				value = (w_length < sizeof(mtp_ext_config_desc_4) ?
-						w_length : sizeof(mtp_ext_config_desc_4));
-				memcpy(cdev->req->buf, &mtp_ext_config_desc_4, value);
-				break;
-			case 7:		/* acm,gser,mtp,adb, with acm, xp failed so far */
-				value = (w_length < sizeof(mtp_ext_config_desc_5) ?
-						w_length : sizeof(mtp_ext_config_desc_5));
-				memcpy(cdev->req->buf, &mtp_ext_config_desc_5, value);
-				break;
-			#endif
 			default:			/* unknown, 0xff */
 				value = (w_length < sizeof(mtp_ext_config_desc) ?
 						w_length : sizeof(mtp_ext_config_desc));
@@ -1899,10 +1781,7 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 			ctrl->bRequest, w_index, w_value, w_length);
 
 		if (ctrl->bRequest == MTP_REQ_CANCEL
-#ifndef CONFIG_MTK_TC1_FEATURE
-                                && w_index == 0
-#endif
-				&& w_value == 0) {
+				&& w_index == 0 && w_value == 0) {
 			DBG(cdev, "MTP_REQ_CANCEL\n");
 
 			DBG(cdev, "%s: MTP_REQ_CANCEL. dev->state = %d.\n", __func__, dev->state);
@@ -1924,10 +1803,7 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 			 */
 			value = w_length;
 		} else if (ctrl->bRequest == MTP_REQ_GET_DEVICE_STATUS
-#ifndef CONFIG_MTK_TC1_FEATURE
-				&& w_index == 0
-#endif
-                                && w_value == 0) {
+						&& w_index == 0 && w_value == 0) {
 			struct mtp_device_status *status = cdev->req->buf;
 			status->wLength =
 				__constant_cpu_to_le16(sizeof(*status));
@@ -1976,10 +1852,7 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 			spin_unlock_irqrestore(&dev->lock, flags);
 			value = sizeof(*status);
 		} else if (ctrl->bRequest == MTP_REQ_RESET
-#ifndef CONFIG_MTK_TC1_FEATURE
-                        && w_index == 0
-#endif
-                        && w_value == 0) {
+                        && w_index == 0 && w_value == 0) {
 			struct work_struct *work;
 			DBG(dev->cdev, "%s: MTP_REQ_RESET. dev->state = %d. \n", __func__, dev->state);
 
@@ -2028,10 +1901,7 @@ static int ptp_ctrlrequest(struct usb_composite_dev *cdev,
 			ctrl->bRequest, w_index, w_value, w_length);
 
 		if (ctrl->bRequest == MTP_REQ_CANCEL
-#ifndef CONFIG_MTK_TC1_FEATURE
-            && w_index == 0
-#endif
-				&& w_value == 0) {
+					&& w_index == 0 && w_value == 0) {
 			DBG(cdev, "MTP_REQ_CANCEL\n");
 
 			DBG(cdev, "%s: MTP_REQ_CANCEL. dev->state = %d.\n", __func__, dev->state);
@@ -2053,10 +1923,7 @@ static int ptp_ctrlrequest(struct usb_composite_dev *cdev,
 			 */
 			value = w_length;
 		} else if (ctrl->bRequest == MTP_REQ_GET_DEVICE_STATUS
-#ifndef CONFIG_MTK_TC1_FEATURE
-				&& w_index == 0
-#endif
-                                && w_value == 0) {
+				&& w_index == 0 && w_value == 0) {
 			struct mtp_device_status *status = cdev->req->buf;
 			status->wLength =
 				__constant_cpu_to_le16(sizeof(*status));
@@ -2105,10 +1972,7 @@ static int ptp_ctrlrequest(struct usb_composite_dev *cdev,
 			spin_unlock_irqrestore(&dev->lock, flags);
 			value = sizeof(*status);
 		} else if (ctrl->bRequest == MTP_REQ_RESET
-#ifndef CONFIG_MTK_TC1_FEATURE
-                        && w_index == 0
-#endif
-                        && w_value == 0) {
+                        && w_index == 0 && w_value == 0) {
 			struct work_struct *work;
 			DBG(dev->cdev, "%s: MTP_REQ_RESET. dev->state = %d. \n", __func__, dev->state);
 
