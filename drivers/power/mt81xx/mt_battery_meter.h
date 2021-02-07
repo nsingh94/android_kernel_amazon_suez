@@ -19,11 +19,6 @@
 #define BATTERY_ID_DSY 0x831
 #endif
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-extern signed int gFG_BATT_CAPACITY_aging;
-extern signed int gFG_BATT_CAPACITY;
-#endif
-
 extern s32 battery_meter_get_battery_voltage(void);
 extern s32 battery_meter_get_charging_current(void);
 extern s32 battery_meter_get_battery_current(void);

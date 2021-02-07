@@ -50,14 +50,6 @@
 #include <mtk_rtc.h>
 #endif
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#endif
-
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-#include <linux/sign_of_life.h>
-#endif
-
 static void deferred_restart(struct work_struct *dummy);
 static void long_press_deferred_restart(struct work_struct *dummy);
 
@@ -77,12 +69,6 @@ static unsigned long timer_pos;
 
 static struct hrtimer check_pwrkey_release_timer;
 static struct hrtimer long_press_pwrkey_shutdown_timer;
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-static struct work_struct metrics_work;
-static bool pwrkey_press;
-static void pwrkey_log_to_metrics(struct work_struct *data);
-#endif
 
 #define POWER_KEY_PRESS_CHECK_TIME		(3)	/* 3sec */
 #define LONG_PRESS_PWRKEY_SHUTDOWN_TIME		(6)	/* 10sec */
@@ -324,25 +310,6 @@ static void deferred_restart(struct work_struct *dummy)
 
 }
 
-#ifdef CONFIG_AMAZON_POWEROFF_LOG
-static void log_long_press_power_key(void)
-{
-	int rc;
-	char *argv[] = {
-		"/sbin/crashreport",
-		"long_press_power_key",
-		NULL
-	};
-
-	rc = call_usermodehelper(argv[0], argv, NULL, UMH_WAIT_EXEC);
-
-	if (rc < 0)
-		pr_err("call /sbin/crashreport failed, rc = %d\n", rc);
-
-	msleep(6000); /* 6s */
-}
-#endif /* CONFIG_AMAZON_POWEROFF_LOG */
-
 static void long_press_deferred_restart(struct work_struct *dummy)
 {
 	unsigned int pwrkey_deb = 0;
@@ -353,14 +320,9 @@ static void long_press_deferred_restart(struct work_struct *dummy)
 		pr_info("[long press check] PWRKEY is released!\n");
 	else {
 		pr_notice("[long press check] Long key press power off\n");
-#ifdef CONFIG_AMAZON_POWEROFF_LOG
-		log_long_press_power_key();
-#endif /* CONFIG_AMAZON_POWEROFF_LOG */
 		if (upmu_get_pwrkey_deb())
 			return;
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-		life_cycle_set_shutdown_reason(SHUTDOWN_BY_SW_LONG_PWR_KEY_PRESS);
-#endif
+
 		sys_sync();
 		#if defined(CONFIG_MTK_AUTO_POWER_ON_WITH_CHARGER)
 		if (upmu_get_rgs_chrdet())
@@ -631,22 +593,6 @@ enum hrtimer_restart long_press_pwrkey_shutdown_timer_func(struct hrtimer *timer
 	return HRTIMER_NORESTART;
 }
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#define PWRKEY_METRICS_STR_LEN 128
-static void pwrkey_log_to_metrics(struct work_struct *data)
-{
-	char *action;
-	char buf[PWRKEY_METRICS_STR_LEN];
-
-	action = (pwrkey_press) ? "press" : "release";
-	snprintf(buf, PWRKEY_METRICS_STR_LEN,
-		"%s:powi%c:report_action_is_%s=1;CT;1:NR", __func__,
-		action[0], action);
-	log_to_metrics(ANDROID_LOG_INFO, "PowerKeyEvent", buf);
-
-}
-#endif
-
 static irqreturn_t pwrkey_int_handler(int irq, void *dev_id)
 {
 	unsigned int pwrkey_deb = 0;
@@ -704,13 +650,6 @@ static irqreturn_t pwrkey_int_handler(int irq, void *dev_id)
 		kpd_pwrkey_pmic_handler(0x1);
 	}
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	if (key_down == 1)
-		pwrkey_press = true;
-	else
-		pwrkey_press = false;
-	schedule_work(&metrics_work);
-#endif
 	return IRQ_HANDLED;
 }
 
@@ -1406,10 +1345,6 @@ static int pmic_mt6397_probe(struct platform_device *pdev)
 	low_battery_protect_init(&(pdev->dev));
 #else
 	pr_warn("[Power/PMIC][PMIC] no define LOW_BATTERY_PROTECT\n");
-#endif
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	INIT_WORK(&metrics_work, pwrkey_log_to_metrics);
 #endif
 
 	mt6397_chip = chip;

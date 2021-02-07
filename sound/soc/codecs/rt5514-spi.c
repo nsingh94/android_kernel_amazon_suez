@@ -34,7 +34,6 @@
 #include <sound/soc-dapm.h>
 #include <sound/initval.h>
 #include <sound/tlv.h>
-#include  <linux/metricslog.h> //-- add include file for metrics logging through logcat_vital-->KDM
 
 #include "rt5514-spi.h"
 #include "rt5514.h"
@@ -56,7 +55,6 @@ struct rt5514_dsp {
 	int had_suspend;
 	int sending_crash_event;
 	int pcm_is_readable;
-	bool     fgMetricLogPrint;
 	ktime_t  StreamOpenTime;
 	int dspStreamDuration;
 };
@@ -114,12 +112,6 @@ static void send_dsp_reset_event(struct rt5514_dsp *rt5514_dsp) {
 		pr_err("%s -- send dsp reset uevent!\n", __func__);
 		kobject_uevent_env(&rt5514_dsp->dev->kobj, KOBJ_CHANGE, reset_event);
 		rt5514_reset_duetoSPI();
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		log_counter_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel",
-			"RT5514_DSP_metrics_count","DSP_Reset", 1, "count", NULL, VITALS_NORMAL);
-
-		log_to_metrics(ANDROID_LOG_INFO, "voice_dsp", "voice_dsp:def:DSP_Reset=1;CT;1:NR");
-#endif
 	}
 	rt5514_dsp->sending_crash_event = 1;
 }
@@ -286,31 +278,6 @@ static void rt5514_spi_copy_work(struct work_struct *work)
 	else
 	{
 		schedule_delayed_work(&rt5514_dsp->copy_work, msecs_to_jiffies(20));
-		if (rt5514_dsp->fgMetricLogPrint == false)
-		{
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			rt5514_dsp->fgMetricLogPrint = true;
-			ktime_t Current = ktime_get();
-			if (rt5514_dsp->dspStreamDuration >= MIN_SUSPEND_AUDIO_DURATION) {
-				char buf[128];
-				snprintf(buf, sizeof(buf),
-					"voice_dsp:def:DSP_catchup_ms=%d;TI;1:NR",
-					ktime_to_ms(Current) - ktime_to_ms(rt5514_dsp->StreamOpenTime));
-				log_to_metrics(ANDROID_LOG_INFO, "voice_dsp", buf);
-
-				log_timer_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel",
-					"RT5514_DSP_metrics_time","DSP_DATA_CATCH-UP_FINISH",
-					ktime_to_ms(Current)  - ktime_to_ms(rt5514_dsp->StreamOpenTime),
-					"ms", VITALS_NORMAL);
-
-			}
-			else
-				log_timer_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel",
-					"RT5514_DSP_metrics_time","DSP_DATA_PROCESS_FINISH",
-					ktime_to_ms(Current)  - ktime_to_ms(rt5514_dsp->StreamOpenTime),
-					"ms", VITALS_NORMAL);
-#endif
-		}
 	}
 done:
 	mutex_unlock(&rt5514_dsp->dma_lock);
@@ -322,13 +289,8 @@ static int rt5514_spi_pcm_open(struct snd_pcm_substream *substream)
 	snd_soc_set_runtime_hwparams(substream, &rt5514_spi_pcm_hardware);
 	if (rt5514_dsp_pointer)
 	{
-		rt5514_dsp_pointer->fgMetricLogPrint = false;
 		rt5514_dsp_pointer->StreamOpenTime = ktime_get();
 		rt5514_dsp_pointer->dspStreamDuration = 0;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		log_counter_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel",
-			"RT5514_DSP_metrics_count","DSP_DATA_PROCESS_BEGIN", 1, "count", NULL, VITALS_NORMAL);
-#endif
 	}
 	return 0;
 }
@@ -364,17 +326,6 @@ static int rt5514_spi_hw_free(struct snd_pcm_substream *substream)
 	mutex_unlock(&rt5514_dsp->dma_lock);
 
 	cancel_delayed_work_sync(&rt5514_dsp->copy_work);
-	if (rt5514_dsp->fgMetricLogPrint == false)
-	{
-		rt5514_dsp->fgMetricLogPrint = true;
-		ktime_t Current = ktime_get();
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		log_timer_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel",
-			"RT5514_DSP_metrics_time","DSP_DATA_CANCEL",
-			ktime_to_ms(Current)  - ktime_to_ms(rt5514_dsp->StreamOpenTime),
-			"ms", VITALS_NORMAL);
-#endif
-	}
 
 	return snd_pcm_lib_free_vmalloc_buffer(substream);
 }
