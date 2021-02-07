@@ -74,9 +74,6 @@
 #include <linux/uprobes.h>
 #include <linux/aio.h>
 #include <linux/compiler.h>
-#ifdef CONFIG_MTPROF
-#include "mt_cputime.h"
-#endif
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/uaccess.h>
@@ -1782,12 +1779,7 @@ long do_fork(unsigned long clone_flags,
 			pr_err("[%d:%s] fork [%d:%s] total fork time[%llu us] > 1s\n",
 			current->pid, current->comm, p->pid, p->comm, dur);
 		}
-#ifdef CONFIG_MTPROF
-#ifdef CONFIG_MTPROF_CPUTIME
-		/* mt shceduler profiling*/
-		save_mtproc_info(p, sched_clock());
-#endif
-#endif
+
 		wake_up_new_task(p);
 
 		/* forking complete and child started to run, tell ptracer */

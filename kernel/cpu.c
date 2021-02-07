@@ -23,7 +23,6 @@
 #include <trace/events/power.h>
 
 #include "smpboot.h"
-#include "mt_sched_mon.h"
 
 #ifdef CONFIG_SMP
 /* Serializes the updates to cpu_online_mask, cpu_present_mask */
@@ -53,6 +52,7 @@ RAW_NOTIFIER_HEAD(cpu_chain);
 #else
 static RAW_NOTIFIER_HEAD(cpu_chain);
 #endif
+
 
 /* If set, cpu_up and cpu_down will return -EBUSY and do nothing.
  * Should always be manipulated under cpu_add_remove_lock

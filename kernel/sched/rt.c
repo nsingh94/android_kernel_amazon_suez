@@ -9,9 +9,6 @@
 #endif
 
 #include <linux/slab.h>
-#ifdef CONFIG_MT_RT_THROTTLE_MON
-#include "mt_sched_mon.h"
-#endif
 int sched_rr_timeslice = RR_TIMESLICE;
 
 static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun);
@@ -995,12 +992,6 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 						rq_cpu(rq), rq->rt.rt_throttled);
 				enqueue = 1;
 
-#ifdef CONFIG_MT_RT_THROTTLE_MON
-				if (rt_rq->rt_time != 0) {
-					mt_rt_mon_switch(MON_RESET, i);
-					mt_rt_mon_switch(MON_START, i);
-				}
-#endif
 				/*
 				 * Force a clock update if the CPU was idle,
 				 * lest wakeup -> unthrottle time accumulate.
@@ -1093,11 +1084,6 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 			mt_sched_printf(sched_rt_info, "cpu=%d rt_throttled=%d",
 					cpu, rt_rq->rt_throttled);
 
-#ifdef CONFIG_MT_RT_THROTTLE_MON
-			/* sched:rt throttle monitor */
-			mt_rt_mon_switch(MON_STOP, cpu);
-			mt_rt_mon_print_task(cpu);
-#endif
 		} else {
 			/*
 			 * In case we did anyway, make it go away,
@@ -1126,10 +1112,6 @@ static void update_curr_rt(struct rq *rq)
 	struct sched_rt_entity *rt_se = &curr->rt;
 	u64 delta_exec;
 	int cpu = rq_cpu(rq);
-#ifdef CONFIG_MT_RT_THROTTLE_MON
-	struct rt_rq *cpu_rt_rq;
-	u64 runtime;
-#endif
 
 	if (curr->sched_class != &rt_sched_class)
 		return;
@@ -1157,23 +1139,6 @@ static void update_curr_rt(struct rq *rq)
 
 	if (!rt_bandwidth_enabled())
 		return;
-
-#ifdef CONFIG_MT_RT_THROTTLE_MON
-	cpu_rt_rq = rt_rq_of_se(rt_se);
-	runtime = sched_rt_runtime(cpu_rt_rq);
-	if (cpu_rt_rq->rt_time == 0 && !(cpu_rt_rq->rt_throttled)) {
-		if (curr->se.exec_start < per_cpu(rt_period_time, cpu) &&
-			(per_cpu(old_rt_runtime, cpu) + delta_exec) > runtime) {
-			save_mt_rt_mon_info(cpu, delta_exec, curr);
-			mt_rt_mon_switch(MON_STOP, cpu);
-			mt_rt_mon_print_task(cpu);
-		}
-		mt_rt_mon_switch(MON_RESET, cpu);
-		mt_rt_mon_switch(MON_START, cpu);
-		update_mt_rt_mon_start(cpu, delta_exec);
-	}
-	save_mt_rt_mon_info(cpu, delta_exec, curr);
-#endif
 
 	for_each_sched_rt_entity(rt_se) {
 		struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
