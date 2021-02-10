@@ -1,53 +1,42 @@
 /*
- * Copyright (c) 2014 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  */
 
+/**
+ * @file mt_gpufreq.h
+ * @brief GPU DVFS driver interface
+ */
 
 #ifndef _MT_GPUFREQ_H
 #define _MT_GPUFREQ_H
 
+#include <linux/module.h>
+#include <linux/clk.h>
 
-/**************************************************
-* GPU DVFS touch boost feature
-***************************************************/
-#define MT_GPUFREQ_INPUT_BOOST
 
 /*********************
 * GPU Frequency List
 **********************/
 #define GPU_DVFS_FREQ1                  (698000) /* KHz */
-#define GPU_DVFS_FREQ2                  (648000) /* KHz */
-#define GPU_DVFS_FREQ3                  (598000) /* KHz */
-#define GPU_DVFS_FREQ4                  (494000) /* KHz */
-#define GPU_DVFS_FREQ5                  (445000) /* KHz */
-#define GPU_DVFS_FREQ6                  (396500) /* KHz */
-#define GPU_DVFS_FREQ7                  (299000) /* KHz */
-#define GPU_DVFS_FREQ8                  (253500) /* KHz */
-
-typedef enum GPUFREQ_DVFS_TABLE_TYPE
-{
-	GPUFREQ_TYPE_FREE = 0,
-	GPUFREQ_TYPE_450,
-	GPUFREQ_TYPE_500,
-	GPUFREQ_TYPE_600,
-	GPUFREQ_TYPE_650,
-	GPUFREQ_TYPE_700,
-} GPUFREQ_DVFS_TABLE_TYPE;
-
-#define GPU_DEFAULT_TYPE    GPUFREQ_TYPE_500
+#define GPU_DVFS_FREQ2                  (598000) /* KHz */
+#define GPU_DVFS_FREQ3                  (494000) /* KHz */
+#define GPU_DVFS_FREQ4                  (455000) /* KHz */
+#define GPU_DVFS_FREQ5                  (396500) /* KHz */
+#define GPU_DVFS_FREQ6                  (299000) /* KHz */
+#define GPU_DVFS_FREQ7                  (253500) /* KHz */
 
 /* Used for fixed freq-volt setting maximum boundary */
 #define GPU_DVFS_MAX_FREQ               (700000) /* KHz */
-#define GPU_DVFS_MIN_FREQ               (GPU_DVFS_FREQ8)
+#define GPU_DVFS_MIN_FREQ               (GPU_DVFS_FREQ7)
 
 #define GPU_DVFS_VOLT1                  (1130)   /* mV */
 #define GPU_DVFS_VOLT2                  (1000)   /* mV */
@@ -84,6 +73,7 @@ struct mt_gpufreq_power_table_info {
 /*****************
 * extern function
 ******************/
+extern bool         mt_gpucore_ready(void);
 extern bool         mt_gpufreq_dvfs_ready(void);
 extern int          mt_gpufreq_state_set(int enabled);
 extern unsigned int mt_gpufreq_get_cur_freq_index(void);
@@ -93,15 +83,13 @@ extern unsigned int mt_gpufreq_get_dvfs_table_num(void);
 extern unsigned int mt_gpufreq_target(unsigned int idx);
 extern unsigned int mt_gpufreq_voltage_enable_set(unsigned int enable);
 extern unsigned int mt_gpufreq_voltage_set_by_ptpod(unsigned int volt[], unsigned int array_size);
-extern unsigned int mt_gpufreq_get_frequency_by_level(unsigned int num);
+extern unsigned int mt_gpufreq_get_freq_by_idx(unsigned int idx);
 extern void         mt_gpufreq_return_default_DVS_by_ptpod(void);
 extern void         mt_gpufreq_enable_by_ptpod(void);
 extern void         mt_gpufreq_disable_by_ptpod(void);
 extern unsigned int mt_gpufreq_get_thermal_limit_index(void);
 extern unsigned int mt_gpufreq_get_thermal_limit_freq(void);
 extern void         mt_gpufreq_thermal_protect(unsigned int limited_power);
-extern void mt_gpufreq_pwr_dump(void);
-
 
 /*****************
 * power limit notification
@@ -126,8 +114,6 @@ extern void mt_gpufreq_setvolt_registerCB(sampler_func pCB);
 * Extern Function Declaration
 *******************************/
 u32 get_devinfo_with_index(u32 index);
-
-void MTKMFGEnableDVFSTimer(bool bEnable);
 
 typedef void (*gpufreq_mfgclock_notify)(void);
 extern void mt_gpufreq_mfgclock_notify_registerCB(

@@ -113,7 +113,6 @@ static unsigned long lowmem_deathpending_timeout;
 /* ACOS_MOD_BEGIN {fwk_crash_log_collection} */
 /* Declarations */
 void ion_mm_heap_memory_detail_lmk(void);
-void gpu_mem_debug_lmk(void);
 /* Constants */
 static int BUFFER_SIZE = 16*1024;
 static int ELEMENT_SIZE = 256;
@@ -495,7 +494,6 @@ log_again:
 			task_unlock(p2);
 		}
 		rcu_read_unlock();
-		gpu_mem_debug_lmk();
 		kill_msg_index = head;
 	}
 #endif /* CONFIG_MT_ENG_BUILD */

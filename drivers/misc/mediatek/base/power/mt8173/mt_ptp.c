@@ -1218,7 +1218,7 @@ static void get_freq_table_gpu(struct ptp_det *det)
 
 	for (i = 0; i < NR_FREQ; i++) {
 		/* TODO: FIXME */
-		det->freq_tbl[i] = PERCENT(mt_gpufreq_get_frequency_by_level(i), det->max_freq_khz);
+		det->freq_tbl[i] = PERCENT(mt_gpufreq_get_freq_by_idx(i), det->max_freq_khz);
 		if (0 == det->freq_tbl[i])
 			break;
 	}
@@ -1567,7 +1567,7 @@ static void ptp_set_ptp_volt(struct ptp_det *det)
 	case PTP_CTRL_GPU:
 		for (i = 0; i < det->num_freq_tbl; i++) {
 
-			gpu_freq = mt_gpufreq_get_frequency_by_level(i);
+			gpu_freq = mt_gpufreq_get_freq_by_idx(i);
 
 			switch (gpu_freq) {
 			case GPU_DVFS_FREQ1:	/* 695500 */
@@ -2477,7 +2477,7 @@ static int ptp_probe(struct platform_device *pdev)
 	FUNC_ENTER(FUNC_LV_MODULE);
 
 	/* wait for Vgpu power */
-	if (!is_gpu_ready())
+	if (!mt_gpucore_ready())
 		return -EPROBE_DEFER;
 
 	ptpod_id = (ptp_devinfo.M_HW_RES5 >> PTPOD_ID_SHIFT) & PTPOD_ID_MASK;
