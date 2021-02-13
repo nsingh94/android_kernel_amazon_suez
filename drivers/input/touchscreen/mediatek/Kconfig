@@ -32,6 +32,21 @@ config TOUCHSCREEN_MTK_FT5726
           To compile this dirver as a module, choose M here: the
           module will be called.
 
+config SHOW_TOUCH_VENDOR
+	tristate "FT5726 show touch vendor"
+	help
+	  Say Y here if FT5726 have show touch vendor feature,
+	  connected to your system.
+          To compile this dirver as a module, choose M here: the
+          module will be called.
+
+config TOUCHSCREEN_GESTURE_WAKEUP
+	bool "Touch Screen Gesture Wakeup support"
+	default n
+	help
+	  Say Y here if you support Touch Screen Gesture Wakeup
+	  If unsure, say N.
+
 config CONFIG_TOUCHSCREEN_FT5X46
 	tristate "FT5X46 Touchscreen"
 	default n

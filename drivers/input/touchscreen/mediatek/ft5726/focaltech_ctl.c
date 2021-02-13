@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2012-2015, Focaltech Systems (R)，All Rights Reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 /************************************************************************
 * File Name: focaltech_ctl.c
 *
@@ -42,17 +55,18 @@ static struct class *fts_class;
 * Output: get data in buf
 * Return: fail <0
 ***********************************************************************/
-static int fts_rw_iic_drv_myread(struct i2c_client *client, u8 *buf, int length)
+static int fts_rw_iic_drv_myread(struct i2c_client *client, u8 *buf,
+				 int length)
 {
 	int ret = 0;
 
 	ret = ftxxxx_i2c_Read(client, NULL, 0, buf, length);
-
 	if (ret < 0)
-		dev_err(&client->dev, "%s:IIC Read failed\n", __func__);
+		dev_err(&client->dev, "[focal] %s:IIC Read failed\n", __func__);
 
 	return ret;
 }
+
 /************************************************************************
 * Name: fts_rw_iic_drv_mywrite
 * Brief: i2c write
@@ -60,16 +74,19 @@ static int fts_rw_iic_drv_myread(struct i2c_client *client, u8 *buf, int length)
 * Output: no
 * Return: fail <0
 ***********************************************************************/
-static int fts_rw_iic_drv_mywrite(struct i2c_client *client, u8 *buf, int length)
+static int fts_rw_iic_drv_mywrite(struct i2c_client *client, u8 *buf,
+				  int length)
 {
 	int ret = 0;
 
 	ret = ftxxxx_i2c_Write(client, buf, length);
 	if (ret < 0)
-		dev_err(&client->dev, "%s:IIC Write failed\n", __func__);
+		dev_err(&client->dev, "[focal] %s:IIC Write failed\n",
+			__func__);
 
 	return ret;
 }
+
 /************************************************************************
 * Name: fts_rw_iic_drv_RDWR
 * Brief: get package to i2c read/write
@@ -86,33 +103,32 @@ static int fts_rw_iic_drv_RDWR(struct i2c_client *client, unsigned long arg)
 	int i;
 
 	if (!access_ok(VERIFY_READ, (struct fts_rw_i2c_queue *)arg,
-					sizeof(struct fts_rw_i2c_queue))) {
+		       sizeof(struct fts_rw_i2c_queue))) {
 		return -EFAULT;
 	}
 
 	if (copy_from_user(&i2c_rw_queue, (struct fts_rw_i2c_queue *)arg,
-					sizeof(struct fts_rw_i2c_queue))) {
+			   sizeof(struct fts_rw_i2c_queue))) {
 		return -EFAULT;
 	}
 
 	if (i2c_rw_queue.queuenum > FTS_I2C_RDWR_MAX_QUEUE)
 		return -EINVAL;
 
-
 	i2c_rw_msg = (struct fts_rw_i2c *)
-		kmalloc(i2c_rw_queue.queuenum * sizeof(struct fts_rw_i2c),
-							GFP_KERNEL);
+	    kmalloc(i2c_rw_queue.queuenum * sizeof(struct fts_rw_i2c),
+		    GFP_KERNEL);
 	if (!i2c_rw_msg)
 		return -ENOMEM;
 
 	if (copy_from_user(i2c_rw_msg, i2c_rw_queue.i2c_queue,
-			i2c_rw_queue.queuenum*sizeof(struct fts_rw_i2c))) {
+			   i2c_rw_queue.queuenum * sizeof(struct fts_rw_i2c))) {
 		kfree(i2c_rw_msg);
 		return -EFAULT;
 	}
 
 	data_ptrs = kmalloc_array(i2c_rw_queue.queuenum, sizeof(u8 __user *),
-							GFP_KERNEL);
+				  GFP_KERNEL);
 	if (data_ptrs == NULL) {
 		kfree(i2c_rw_msg);
 		return -ENOMEM;
@@ -121,11 +137,11 @@ static int fts_rw_iic_drv_RDWR(struct i2c_client *client, unsigned long arg)
 	ret = 0;
 	for (i = 0; i < i2c_rw_queue.queuenum; i++) {
 		if ((i2c_rw_msg[i].length > 8192) ||
-				(i2c_rw_msg[i].flag & I2C_M_RECV_LEN)) {
+		    (i2c_rw_msg[i].flag & I2C_M_RECV_LEN)) {
 			ret = -EINVAL;
 			break;
 		}
-		data_ptrs[i] = (u8 __user *)i2c_rw_msg[i].buf;
+		data_ptrs[i] = (u8 __user *) i2c_rw_msg[i].buf;
 		i2c_rw_msg[i].buf = kmalloc(i2c_rw_msg[i].length, GFP_KERNEL);
 		if (i2c_rw_msg[i].buf == NULL) {
 			ret = -ENOMEM;
@@ -133,7 +149,7 @@ static int fts_rw_iic_drv_RDWR(struct i2c_client *client, unsigned long arg)
 		}
 
 		if (copy_from_user(i2c_rw_msg[i].buf, data_ptrs[i],
-					i2c_rw_msg[i].length)) {
+				   i2c_rw_msg[i].length)) {
 			++i;
 			ret = -EFAULT;
 			break;
@@ -153,13 +169,17 @@ static int fts_rw_iic_drv_RDWR(struct i2c_client *client, unsigned long arg)
 	for (i = 0; i < i2c_rw_queue.queuenum; i++) {
 		if (i2c_rw_msg[i].flag) {
 			ret = fts_rw_iic_drv_myread(client,
-				i2c_rw_msg[i].buf, i2c_rw_msg[i].length);
+						    i2c_rw_msg[i].buf,
+						    i2c_rw_msg[i].length);
 			if (ret >= 0)
-				ret = copy_to_user(data_ptrs[i], i2c_rw_msg[i].buf,
-					i2c_rw_msg[i].length);
+				ret =
+				    copy_to_user(data_ptrs[i],
+						 i2c_rw_msg[i].buf,
+						 i2c_rw_msg[i].length);
 		} else {
 			ret = fts_rw_iic_drv_mywrite(client,
-				i2c_rw_msg[i].buf, i2c_rw_msg[i].length);
+						     i2c_rw_msg[i].buf,
+						     i2c_rw_msg[i].length);
 		}
 	}
 
@@ -190,6 +210,7 @@ static int fts_rw_iic_drv_release(struct inode *inode, struct file *filp)
 {
 	return 0;
 }
+
 /************************************************************************
 * Name: fts_rw_iic_drv_ioctl
 * Brief: char device I/O control function interface
@@ -198,7 +219,7 @@ static int fts_rw_iic_drv_release(struct inode *inode, struct file *filp)
 * Return: fail <0
 ***********************************************************************/
 static long fts_rw_iic_drv_ioctl(struct file *filp, unsigned int cmd,
-unsigned long arg)
+				 unsigned long arg)
 {
 	long ret = 0;
 	struct fts_rw_i2c_dev *ftsdev = filp->private_data;
@@ -211,7 +232,7 @@ unsigned long arg)
 		ret = (long)fts_rw_iic_drv_RDWR(ftsdev->client, arg);
 		break;
 	default:
-		ret =  -ENOTTY;
+		ret = -ENOTTY;
 		break;
 	}
 	mutex_unlock(&fts_rw_i2c_dev_tt->fts_rw_i2c_mutex);
@@ -222,10 +243,10 @@ unsigned long arg)
 *char device file operation which will be put to register the char device
 */
 static const struct file_operations fts_rw_iic_drv_fops = {
-	.owner		= THIS_MODULE,
-	.open		= fts_rw_iic_drv_open,
-	.release	= fts_rw_iic_drv_release,
-	.unlocked_ioctl	= fts_rw_iic_drv_ioctl,
+	.owner = THIS_MODULE,
+	.open = fts_rw_iic_drv_open,
+	.release = fts_rw_iic_drv_release,
+	.unlocked_ioctl = fts_rw_iic_drv_ioctl,
 };
 
 /************************************************************************
@@ -246,6 +267,7 @@ static void fts_rw_iic_drv_setup_cdev(struct fts_rw_i2c_dev *dev, int index)
 	if (err)
 		pr_info("Error %d adding LED%d", err, index);
 }
+
 /************************************************************************
 * Name: fts_rw_iic_drv_myinitdev
 * Brief: initial char device
@@ -266,8 +288,8 @@ static int fts_rw_iic_drv_myinitdev(struct i2c_client *client)
 	}
 	if (err < 0) {
 		dev_err(&client->dev,
-				"%s:ft_rw_iic_drv failed  error code=%d---\n",
-				__func__, err);
+			"[focal] %s:  failed  error code=%d---\n",
+			__func__, err);
 		return err;
 	}
 
@@ -275,8 +297,7 @@ static int fts_rw_iic_drv_myinitdev(struct i2c_client *client)
 	if (!fts_rw_i2c_dev_tt) {
 		err = -ENOMEM;
 		unregister_chrdev_region(devno, 1);
-		dev_err(&client->dev, "%s:ft_rw_iic_drv failed\n",
-				__func__);
+		dev_err(&client->dev, "[focal] %s: failed\n", __func__);
 		return err;
 	}
 	fts_rw_i2c_dev_tt->client = client;
@@ -285,16 +306,17 @@ static int fts_rw_iic_drv_myinitdev(struct i2c_client *client)
 
 	fts_class = class_create(THIS_MODULE, "fts_class");
 	if (IS_ERR(fts_class)) {
-		dev_err(&client->dev, "%s:failed in creating class.\n",
-				__func__);
+		dev_err(&client->dev, "[focal] %s:failed in creating class.\n",
+			__func__);
 		return -1;
 	}
-	/*create device node*/
+	/*create device node */
 	device_create(fts_class, NULL, MKDEV(fts_rw_iic_drv_major, 0),
-				NULL, FTS_RW_IIC_DRV);
+		      NULL, FTS_RW_IIC_DRV);
 
 	return 0;
 }
+
 /************************************************************************
 * Name: fts_rw_iic_drv_init
 * Brief: call initial char device
@@ -304,9 +326,10 @@ static int fts_rw_iic_drv_myinitdev(struct i2c_client *client)
 ***********************************************************************/
 int fts_rw_iic_drv_init(struct i2c_client *client)
 {
-	dev_dbg(&client->dev, "[FTS]----ft_rw_iic_drv init ---\n");
+	dev_dbg(&client->dev, "[focal] ft_rw_iic_drv init\n");
 	return fts_rw_iic_drv_myinitdev(client);
 }
+
 /************************************************************************
 * Name: fts_rw_iic_drv_exit
 * Brief: delete char device
@@ -314,14 +337,13 @@ int fts_rw_iic_drv_init(struct i2c_client *client)
 * Output: no
 * Return: no
 ***********************************************************************/
-void  fts_rw_iic_drv_exit(void)
+void fts_rw_iic_drv_exit(void)
 {
 	device_destroy(fts_class, MKDEV(fts_rw_iic_drv_major, 0));
-	/*delete class created by us*/
+	/*delete class created by us */
 	class_destroy(fts_class);
-	/*delet the cdev*/
+	/*delet the cdev */
 	cdev_del(&fts_rw_i2c_dev_tt->cdev);
 	kfree(fts_rw_i2c_dev_tt);
 	unregister_chrdev_region(MKDEV(fts_rw_iic_drv_major, 0), 1);
 }
-

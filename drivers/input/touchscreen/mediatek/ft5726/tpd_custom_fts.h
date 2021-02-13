@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2012-2015, Focaltech Systems (R)，All Rights Reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 /************************************************************************
 * File Name: focaltech_ctl.c
 *
@@ -10,7 +23,7 @@
 ************************************************************************/
 #ifndef TOUCHPANEL_H__
 #define TOUCHPANEL_H__
-
+#include "tpd.h"
 #include <linux/hrtimer.h>
 #include <linux/string.h>
 #include <linux/vmalloc.h>
@@ -29,10 +42,14 @@
 #include <linux/byteorder/generic.h>
 #include <linux/interrupt.h>
 #include <linux/time.h>
+#include <linux/rtpm_prio.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
 #include <linux/jiffies.h>
 #include <linux/version.h>
+#ifdef CONFIG_IDME
+#include <misc/idme.h>
+#endif
 
 /* IC info */
 extern int ftxxxx_i2c_Read(struct i2c_client *client, char *writebuf,
@@ -49,5 +66,16 @@ extern void fts_reset_tp(int HighOrLow);
 #define TPD_RES_X			1536
 #define TPD_RES_Y			2048
 #define IICReadWriteRetryTime		3
+/* ID for routing design */
+#define FT_2T2R_ID 0x5A
+#define FT_1T2R_ID 0xA5
 
+/*if need these function, pls enable this MACRO*/
+#define TPD_AUTO_UPGRADE
+#define FTS_CTL_IIC
+#define SYSFS_DEBUG
+#define FTS_APK_DEBUG
+#define FTS_POWER_DOWN_IN_SUSPEND
+#define GTP_ESD_PROTECT
+#define FTS_CHARGER_DETECT
 #endif /* TOUCHPANEL_H__ */

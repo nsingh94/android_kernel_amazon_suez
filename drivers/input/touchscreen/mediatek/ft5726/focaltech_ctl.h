@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2012-2015, Focaltech Systems (R)，All Rights Reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 /************************************************************************
 * File Name: focaltech_ctl.h
 *
@@ -17,17 +30,17 @@
 #define FTS_I2C_SLAVEADDR	11
 #define FTS_I2C_RW		12
 
-typedef struct fts_rw_i2c {
+struct fts_rw_i2c {
 	u8 *buf;
-	u8 flag;	/*0-write 1-read*/
-	__u16 length;   /*the length of data*/
-} *pfts_rw_i2c;
+	u8 flag;		/*0-write 1-read */
+	__u16 length;		/*the length of data */
+};
 
-typedef struct fts_rw_i2c_queue {
+struct fts_rw_i2c_queue {
 	struct fts_rw_i2c __user *i2c_queue;
 	int queuenum;
-} *pfts_rw_i2c_queue;
+};
 
 int fts_rw_iic_drv_init(struct i2c_client *client);
-void  fts_rw_iic_drv_exit(void);
+void fts_rw_iic_drv_exit(void);
 #endif
