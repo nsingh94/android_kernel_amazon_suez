@@ -77,6 +77,14 @@ void __attribute__((weak)) mmdvfs_mm_clock_switch_notify(int is_before, int is_t
 }
 
 /* #include <mt_sd_func.h> */
+int __attribute__((weak)) sdio_stop_transfer(void)
+{
+	return 0;
+}
+int __attribute__((weak)) sdio_start_ot_transfer(void)
+{
+	return 0;
+}
 int __attribute__((weak)) autok_abort_action(void)
 {
 	return 0;
