@@ -12,6 +12,7 @@ config MTK_AEE_FEATURE
 config MTK_AEE_AED
 	tristate "Enable AEE Kernel Exception Report Daemon"
 	default y
+	depends on MTK_AEE_FEATURE
 	help
 	  MTK_AEE_AED is the kernel config of aed, which is the base support for
 	  aee features. Such as:
@@ -21,7 +22,8 @@ config MTK_AEE_AED
 
 config MTK_AEE_IPANIC
 	tristate "Enable AEE Kernel Panic Dump"
-	default y
+	default n
+	depends on MTK_AEE_FEATURE
 	help
 	  MTK_AEE_IPANIC is the kernel config of ipanic feature designed by
 	  MTK, which is the enhancement of kernel defaut panic flow, and combine
@@ -31,6 +33,7 @@ config MTK_AEE_IPANIC
 config MTK_AEE_POWERKEY_HANG_DETECT
 	bool "powerkey monitor"
 	default n
+	depends on MTK_AEE_FEATURE
 	help
 	  MTK_AEE_POWERKEY_HANG_DETECT is the kernel config of hang feature
 	  designed by MTK, which is a debug feature for detect device hang.
@@ -40,5 +43,6 @@ config MTK_AEE_POWERKEY_HANG_DETECT
 config MTK_AEE_MRDUMP
 	bool "MT-RAMDUMP support"
 	default n
+	depends on MTK_AEE_FEATURE
 	help
 	  MT-RAMDUMP support full system ramdump when kernel occur.
