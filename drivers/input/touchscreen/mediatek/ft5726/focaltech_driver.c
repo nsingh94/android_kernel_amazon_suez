@@ -27,7 +27,6 @@
 #include <linux/i2c.h>
 #include <linux/sched.h>
 #include <linux/kthread.h>
-#include <linux/rtpm_prio.h>
 #include <linux/wait.h>
 #include <linux/time.h>
 #include <linux/delay.h>
@@ -419,7 +418,7 @@ static int fts_report_value(struct ts_event *data)
 static int touch_event_handler(void *unused)
 {
 	struct ts_event pevent;
-	struct sched_param param = {.sched_priority = RTPM_PRIO_TPD };
+	struct sched_param param = {.sched_priority = 4 };
 
 	sched_setscheduler(current, SCHED_RR, &param);
 
