@@ -59,6 +59,10 @@ else
     ccflags-y += -DCFG_MET_PACKET_TRACE_SUPPORT=0
 endif
 
+ifeq ($(CONFIG_MTK_NOISE_LEVEL_SUPPORT), y)
+    ccflags-y += -DCFG_ENABLE_RX_STATUS_G3
+endif
+
 ifeq ($(WLAN_CHIP_ID), MT6797)
 else
 ccflags-y += -D_HIF_SDIO=1

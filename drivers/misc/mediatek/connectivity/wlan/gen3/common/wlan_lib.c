@@ -664,6 +664,25 @@ wlanAdapterStart(IN P_ADAPTER_T prAdapter,
 	} while (FALSE);
 
 	if (u4Status == WLAN_STATUS_SUCCESS) {
+#ifdef CFG_ENABLE_RX_STATUS_G3
+		CMD_SW_DBG_CTRL_T rCmdSwCtrl;
+
+		kalMemZero(&rCmdSwCtrl, sizeof(CMD_SW_DBG_CTRL_T));
+
+		rCmdSwCtrl.u4Id = 0xb0010000;
+		rCmdSwCtrl.u4Data = 1;
+
+		wlanSendSetQueryCmd(prAdapter,
+				    CMD_ID_SW_DBG_CTRL,
+				    TRUE,
+				    FALSE,
+				    FALSE,
+				    NULL,
+				    NULL,
+				    sizeof(CMD_SW_DBG_CTRL_T),
+				    (PUINT_8)&rCmdSwCtrl, NULL, 0);
+#endif
+
 		/* restore to hardware default */
 		HAL_SET_INTR_STATUS_READ_CLEAR(prAdapter);
 		HAL_SET_MAILBOX_READ_CLEAR(prAdapter, FALSE);

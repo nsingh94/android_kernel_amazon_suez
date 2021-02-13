@@ -286,6 +286,13 @@ config MTK_CONN_LTE_IDC_SUPPORT
 	help
 	  This option enables CONN LTE IDC support
 
+config MTK_NOISE_LEVEL_SUPPORT
+	bool "MTK_NOISE_LEVEL_SUPPORT"
+	select MTK_CONN_MD
+	default n
+	help
+	  This feature will enable rx status group3 for get noise level
+
 menuconfig GPS
         tristate "GPS drivers"
         default n
