@@ -141,6 +141,7 @@ void mtkfb_log_enable(int enable)
 unsigned long fb_pa = 0;
 
 static const struct timeval FRAME_INTERVAL = { 0, 30000 };	/* 33ms */
+static unsigned int cabc_mode = 0xc0;
 
 atomic_t has_pending_update = ATOMIC_INIT(0);
 struct fb_overlay_layer video_layerInfo;
@@ -348,6 +349,8 @@ int mtkfb_set_backlight_level(unsigned int level)
 }
 EXPORT_SYMBOL(mtkfb_set_backlight_level);
 
+int primary_display_setbacklight_mode(unsigned int mode);
+
 int mtkfb_set_backlight_mode(unsigned int mode)
 {
 	MTKFB_FUNC();
@@ -368,6 +371,8 @@ int mtkfb_set_backlight_mode(unsigned int mode)
 		goto End;
 
 	/* DISP_SetBacklight_mode(mode); */
+	cabc_mode = mode;
+	primary_display_setbacklight_mode(mode);
 End:
 	sem_flipping_cnt++;
 	sem_early_suspend_cnt++;
@@ -1966,16 +1971,72 @@ static struct fb_ops mtkfb_ops = {
  * ---------------------------------------------------------------------------
  */
 
+static ssize_t mtkfb_backlight_mode_show(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	int cnt;
+
+	switch (cabc_mode) {
+	case 0xc0:
+		cnt = snprintf(buf, PAGE_SIZE, "off\n");
+		break;
+	case 0x40:
+		cnt = snprintf(buf, PAGE_SIZE, "still\n");
+		break;
+	case 0x00:
+		cnt = snprintf(buf, PAGE_SIZE, "mov\n");
+		break;
+	default:
+		cnt = 0;
+	}
+
+	return cnt;
+}
+
+static ssize_t mtkfb_backlight_mode_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t size)
+{
+	if (0 == strncmp(buf, "off", 3))
+		mtkfb_set_backlight_mode(0xc0);
+	else if (0 == strncmp(buf, "still", 5))
+		mtkfb_set_backlight_mode(0x40);
+	else if (0 == strncmp(buf, "mov", 3))
+		mtkfb_set_backlight_mode(0x00);
+	else
+		return -EINVAL;
+
+	return size;
+}
+static DEVICE_ATTR(backlight_mode, S_IWUSR|S_IRUSR|S_IRGRP|S_IWGRP, mtkfb_backlight_mode_show,
+			mtkfb_backlight_mode_store);
+
 static int mtkfb_register_sysfs(struct mtkfb_device *fbdev)
 {
-	/*NOT_REFERENCED(fbdev); */
+	struct device *dev = fbdev->dev;
+	int r = 0;
 
-	return 0;
+	r = device_create_file(dev, &dev_attr_backlight_mode);
+	if (r) {
+		dev_err(dev, "%s: Error, fail to create set_backlight_mode\n",
+			__func__);
+		goto unregister_backlight_mode;
+	}
+
+	return r;
+
+unregister_backlight_mode:
+	device_remove_file(dev, &dev_attr_backlight_mode);
+
+	return r;
 }
 
 static void mtkfb_unregister_sysfs(struct mtkfb_device *fbdev)
 {
-	/*NOT_REFERENCED(fbdev); */
+	struct device *dev = fbdev->dev;
+
+	device_remove_file(dev, &dev_attr_backlight_mode);
 }
 
 /*

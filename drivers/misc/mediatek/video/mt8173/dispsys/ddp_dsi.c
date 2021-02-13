@@ -3177,6 +3177,43 @@ int ddp_dsi_ioctl(DISP_MODULE_ENUM module, void *cmdq_handle, unsigned int ioctl
 				DSI_ChangeClk(module, cmdq_handle, clock);
 			break;
 		}
+	case DDP_CABC_MODE:
+		{
+			DSI_T0_INS t0;
+			unsigned int mode = params[0];
+
+			t0.CONFG = 0x00;
+			t0.Data_ID = 0x15;
+			t0.Data0 = 0x83;
+			t0.Data1 = 0xbb;
+
+			DSI_OUTREG32(cmdq_handle, &DSI_CMDQ_REG[0]->data[0], AS_UINT32(&t0));
+			DSI_OUTREG32(cmdq_handle, &DSI_REG[0]->DSI_CMDQ_SIZE, 1);
+			DSI_OUTREGBIT(cmdq_handle, DSI_MODE_CTRL_REG, DSI_REG[0]->DSI_MODE_CTRL, MIX_MODE, 1);
+
+			t0.CONFG = 0x00;
+			t0.Data_ID = 0x15;
+			t0.Data0 = 0x84;
+			t0.Data1 = 0x22;
+
+			DSI_OUTREG32(cmdq_handle, &DSI_CMDQ_REG[0]->data[0], AS_UINT32(&t0));
+			DSI_OUTREG32(cmdq_handle, &DSI_REG[0]->DSI_CMDQ_SIZE, 1);
+			DSI_OUTREGBIT(cmdq_handle, DSI_MODE_CTRL_REG, DSI_REG[0]->DSI_MODE_CTRL, MIX_MODE, 1);
+
+			DDPMSG("Set CABC mode via MIX_MODE: %d\n", mode);
+
+			t0.CONFG = 0x00;
+			t0.Data_ID = 0x15;
+			t0.Data0 = 0x90;
+			t0.Data1 = mode;
+
+			DSI_OUTREG32(cmdq_handle, &DSI_CMDQ_REG[0]->data[0], AS_UINT32(&t0));
+			DSI_OUTREG32(cmdq_handle, &DSI_REG[0]->DSI_CMDQ_SIZE, 1);
+			DSI_OUTREGBIT(cmdq_handle, DSI_MODE_CTRL_REG, DSI_REG[0]->DSI_MODE_CTRL, MIX_MODE, 1);
+
+			break;
+		}
+
 	default:
 		DISPMSG("unknown ioctl\n");
 	}

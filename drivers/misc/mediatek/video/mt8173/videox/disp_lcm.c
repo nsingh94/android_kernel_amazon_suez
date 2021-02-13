@@ -817,8 +817,27 @@ int disp_lcm_set_backlight(disp_lcm_handle *plcm, int level)
 	return -1;
 }
 
+int disp_lcm_set_backlight_mode(disp_lcm_handle *plcm, int mode)
+{
+	/*DISPFUNC(); */
+	LCM_DRIVER *lcm_drv = NULL;
 
+	DISPFUNC();
 
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->set_backlight_mode) {
+			lcm_drv->set_backlight_mode(mode);
+		} else {
+			DISPERR("FATAL ERROR, lcm_drv->set_backlight_mode is null\n");
+			return -1;
+		}
+
+		return 0;
+	}
+	DISPERR("lcm_drv is null\n");
+	return -1;
+}
 
 int disp_lcm_ioctl(disp_lcm_handle *plcm, LCM_IOCTL ioctl, unsigned int arg)
 {

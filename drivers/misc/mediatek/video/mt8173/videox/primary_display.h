@@ -276,4 +276,8 @@ extern unsigned int gEnableOVLStatusCheck;
 extern int dfo_query(const char *s, unsigned long *v);
 void disp_clear_current_fb_buffer(void);
 
+#include <misc/board_id.h>
+extern unsigned int idme_get_board_type(void);
+extern unsigned int idme_get_board_rev(void);
+
 #endif

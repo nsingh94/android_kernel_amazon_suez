@@ -46,6 +46,7 @@ int disp_lcm_suspend(disp_lcm_handle *plcm);
 int disp_lcm_resume(disp_lcm_handle *plcm);
 int disp_lcm_resume_power(disp_lcm_handle *plcm);
 int disp_lcm_set_backlight(disp_lcm_handle *plcm, int level);
+int disp_lcm_set_backlight_mode(disp_lcm_handle *plcm, int mode);
 int disp_lcm_read_fb(disp_lcm_handle *plcm);
 int disp_lcm_ioctl(disp_lcm_handle *plcm, LCM_IOCTL ioctl, unsigned int arg);
 int disp_lcm_is_video_mode(disp_lcm_handle *plcm);

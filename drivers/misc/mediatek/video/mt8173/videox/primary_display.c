@@ -122,6 +122,8 @@ static unsigned long dc_vAddr[DISP_INTERNAL_BUFFER_COUNT];
 int primary_trigger_cnt = 0;
 unsigned int gPresentFenceIndex = 0;
 
+static int cmd_sel = -1;
+
 #define PRIMARY_DISPLAY_TRIGGER_CNT (1)
 
 typedef struct {
@@ -5322,6 +5324,81 @@ int primary_display_setbacklight(unsigned int level)
 	_primary_path_switch_dst_lock();
 #endif
 	MMProfileLogEx(ddp_mmp_get_events()->primary_set_bl, MMProfileFlagEnd, 0, 0);
+	return ret;
+}
+
+static int _set_backlight_mode_by_cmdq(unsigned int mode)
+{
+	int ret = 0;
+	cmdqRecHandle cmdq_handle = NULL;
+
+	ret = cmdqRecCreate(CMDQ_SCENARIO_PRIMARY_DISP, &cmdq_handle);
+	DISPCHECK("primary backlight_mode, handle=%p\n", cmdq_handle);
+	if (ret != 0) {
+		DISPCHECK("fail to create primary cmdq handle for backlight mode\n");
+		return -1;
+	}
+
+	DISPCHECK("_set_backlight_mode_by_cmdq change CABC mode\n");
+	if (primary_display_is_video_mode()) {
+		cmdqRecReset(cmdq_handle);
+		_cmdq_insert_wait_frame_done_token_mira(cmdq_handle);
+		dpmgr_path_ioctl(pgc->dpmgr_handle, cmdq_handle, DDP_CABC_MODE, (unsigned long *)&mode);
+		_cmdq_flush_config_handle_mira(cmdq_handle, 1);
+		DISPCHECK("set_backlight_mode switch to MIX_MODE\n");
+	}
+
+	DISPCHECK("VIDEO_MODE CLOSE MIX_MODE\n");
+	cmdqRecDestroy(cmdq_handle);
+	cmdq_handle = NULL;
+	return ret;
+}
+
+int primary_display_setbacklight_mode(unsigned int mode)
+{
+	int ret = 0;
+
+#ifdef CONFIG_IDME
+	unsigned int board_type;
+	unsigned int board_rev;
+#endif
+
+	DISPFUNC();
+
+	_primary_path_lock(__func__);
+
+	if (pgc->state == DISP_SLEPT) {
+		DISPCHECK("Slept State set backlight mdoe invald\n");
+		ret = -1;
+	} else {
+#ifdef CONFIG_IDME
+		board_type = idme_get_board_type();
+		board_rev = idme_get_board_rev();
+		DISPMSG("board_type:0x%x, rev:0x%x\n", board_type, board_rev);
+		if (board_type == BOARD_TYPE_SUEZ) {
+			switch (board_rev) {
+			case BOARD_REV_PROTO_0:
+				cmd_sel = 1;
+				break;
+			case BOARD_REV_HVT_0:
+				cmd_sel = 1;
+			break;
+			default:
+				cmd_sel = 0;
+			};
+		}
+#endif
+		if (cmd_sel == 0) {
+			DISPMSG("primary backlight_mode by I2C\n");
+			ret = disp_lcm_set_backlight_mode(pgc->plcm, mode);
+		} else if (cmd_sel == 1) {
+			DISPMSG("primary backlight_mode by MIX_MODE\n");
+			ret = _set_backlight_mode_by_cmdq(mode);
+		} else
+			ret = -1;
+	}
+	_primary_path_unlock(__func__);
+
 	return ret;
 }
 
