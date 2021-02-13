@@ -2940,6 +2940,11 @@ BOOLEAN kalRetrieveNetworkAddress(IN P_GLUE_INFO_T prGlueInfo, IN OUT PARAM_MAC_
 	ASSERT(prGlueInfo);
 
 	if (prGlueInfo->fgIsMacAddrOverride == FALSE) {
+#ifdef CONFIG_IDME
+		COPY_MAC_ADDR(prMacAddr, &prGlueInfo->rRegInfo.aucMacAddr);
+		return TRUE;
+
+#else
 #if !defined(CONFIG_X86)
 		UINT_32 i;
 		BOOLEAN fgIsReadError = FALSE;
@@ -2960,6 +2965,7 @@ BOOLEAN kalRetrieveNetworkAddress(IN P_GLUE_INFO_T prGlueInfo, IN OUT PARAM_MAC_
 #else
 		/* x86 Linux doesn't need to override network address so far */
 		return FALSE;
+#endif
 #endif
 	} else {
 		COPY_MAC_ADDR(prMacAddr, prGlueInfo->rMacAddrOverride);

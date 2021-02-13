@@ -51,6 +51,13 @@
 */
 /* #define MAX_IOREQ_NUM   10 */
 static struct wireless_dev *gprWdev;
+#ifdef CONFIG_IDME
+#define IDME_OF_MAC_ADDR	"/idme/mac_addr"
+#define IDME_OF_WIFI_MFG        "/idme/wifi_mfg"
+#define IDME_OF_BOARD_ID	"/idme/board_id"
+#define BOARD_ID_SUEZ_STR "0028"
+char idme_board_id[16];
+#endif
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************
@@ -1822,6 +1829,158 @@ int set_p2p_mode_handler(struct net_device *netdev, PARAM_CUSTOM_P2P_SET_STRUCT_
 	return 0;
 }
 
+#ifdef CONFIG_IDME
+
+static WIFI_CFG_PARAM_STRUCT idme_wifi_mfg;
+
+static void wlanCopyIdmeWifiMfg(P_REG_INFO_T prRegInfo)
+{
+	int i, j;
+	PUINT_8 pucDest;
+
+	/* MAC Address */
+#if !defined(CONFIG_MTK_TC1_FEATURE)
+	memcpy(prRegInfo->aucMacAddr, idme_wifi_mfg.aucMacAddress,
+		PARAM_MAC_ADDR_LEN);
+#else
+	TC1_FAC_NAME(FacReadWifiMacAddr) ((unsigned char *)prRegInfo->aucMacAddr);
+#endif
+
+	/* country code */
+
+	/* cast to wide characters */
+	if (('X' == idme_wifi_mfg.aucCountryCode[0] &&
+		'X' == idme_wifi_mfg.aucCountryCode[1]) ||
+		(0 == idme_wifi_mfg.aucCountryCode[0] &&
+		0 == idme_wifi_mfg.aucCountryCode[1]))
+		idme_wifi_mfg.aucCountryCode[0] = idme_wifi_mfg.aucCountryCode[1] = 'W';
+
+	prRegInfo->au2CountryCode[0] = (UINT_16)idme_wifi_mfg.aucCountryCode[0];
+	prRegInfo->au2CountryCode[1] = (UINT_16)idme_wifi_mfg.aucCountryCode[1];
+
+	/* default normal TX power */
+	prRegInfo->rTxPwr = idme_wifi_mfg.rTxPwr;
+
+	/* feature flags */
+	prRegInfo->ucTxPwrValid = idme_wifi_mfg.ucTxPwrValid;
+	prRegInfo->ucSupport5GBand = idme_wifi_mfg.ucSupport5GBand;
+
+	prRegInfo->uc2G4BwFixed20M = idme_wifi_mfg.uc2G4BwFixed20M;
+	prRegInfo->uc5GBwFixed20M = idme_wifi_mfg.uc5GBwFixed20M;
+
+	prRegInfo->ucEnable5GBand = idme_wifi_mfg.ucEnable5GBand;
+
+#if CFG_SUPPORT_NVRAM_5G
+	/* EFUSE overriding part */
+	memcpy(prRegInfo->aucEFUSE, (UINT_8 *) &idme_wifi_mfg.EfuseMapping, 144);
+
+	prRegInfo->prOldEfuseMapping = (P_NEW_EFUSE_MAPPING2NVRAM_T)&prRegInfo->aucEFUSE;
+#else
+	/* EFUSE overriding part */
+	memcpy(prRegInfo->aucEFUSE, (UNIT_8 *) &idme_wifi_mfg.aucEFUSE, 144);
+#endif
+
+	/* band edge tx power control */
+	prRegInfo->fg2G4BandEdgePwrUsed = idme_wifi_mfg.fg2G4BandEdgePwrUsed;
+	if (prRegInfo->fg2G4BandEdgePwrUsed) {
+		prRegInfo->cBandEdgeMaxPwrCCK = idme_wifi_mfg.cBandEdgeMaxPwrCCK;
+		prRegInfo->cBandEdgeMaxPwrOFDM20 = idme_wifi_mfg.cBandEdgeMaxPwrOFDM20;
+		prRegInfo->cBandEdgeMaxPwrOFDM40 = idme_wifi_mfg.cBandEdgeMaxPwrOFDM40;
+	}
+
+	/* regulation subbands */
+	prRegInfo->eRegChannelListMap =
+		(ENUM_REG_CH_MAP_T)idme_wifi_mfg.ucRegChannelListMap;
+	prRegInfo->ucRegChannelListIndex = idme_wifi_mfg.ucRegChannelListIndex;
+
+	if (prRegInfo->eRegChannelListMap == REG_CH_MAP_CUSTOMIZED) {
+		for (i = 0; i < MAX_SUBBAND_NUM; i++) {
+			pucDest = (PUINT_8)&prRegInfo->rDomainInfo.rSubBand[i];
+
+			for (j = 0; j < 6; j++)
+				*pucDest++ = idme_wifi_mfg.aucRegSubbandInfo[i * 6 + j];
+		}
+	}
+
+	prRegInfo->ucRxDiversity = idme_wifi_mfg.ucRxDiversity;
+	prRegInfo->rRssiPathCompasation = idme_wifi_mfg.rRssiPathCompensation;
+	prRegInfo->ucRssiPathCompasationUsed = idme_wifi_mfg.fgRssiCompensationVaildbit;
+	prRegInfo->ucGpsDesense = idme_wifi_mfg.ucGpsDesense;
+
+	/* load full NVRAM */
+	memcpy((PUINT_8)&prRegInfo->aucNvram, (PUINT_8)&idme_wifi_mfg.u2Part1OwnVersion, sizeof(WIFI_CFG_PARAM_STRUCT));
+	prRegInfo->prNvramSettings = (P_WIFI_CFG_PARAM_STRUCT)&prRegInfo->aucNvram;
+}
+
+static void idme_get_mac_addr(P_REG_INFO_T prRegInfo)
+{
+	struct device_node *ap;
+	int len, i, ret;
+	char buf[3] = {0};
+
+	ap = of_find_node_by_path(IDME_OF_MAC_ADDR);
+	if (likely(ap)) {
+		const char *mac_addr = of_get_property(ap, "value", &len);
+		if (likely(len >= 12)) {
+			for (i = 0; i < 12; i += 2) {
+				buf[0] = mac_addr[i];
+				buf[1] = mac_addr[i + 1];
+				ret = kstrtou8(buf, 16, &prRegInfo->aucMacAddr[i >> 1]);
+				if (ret)
+					pr_err("idme_get_mac_addr kstrtou8 failed\n");
+			}
+		}
+	}
+}
+
+static int idme_get_wifi_mfg(P_REG_INFO_T prRegInfo)
+{
+	struct device_node *ap;
+	int i, len;
+	int ret = 0;
+	char buf[3] = {0};
+	PUINT_8 p;
+
+	ap = of_find_node_by_path(IDME_OF_WIFI_MFG);
+	if (likely(ap)) {
+		const char *wifi_mfg = of_get_property(ap, "value", &len);
+
+		if (likely(len >= 1024)) {
+			p = (PUINT_8) &idme_wifi_mfg;
+			for (i = 0; i < 1024; i += 2) {
+				buf[0] = wifi_mfg[i];
+				buf[1] = wifi_mfg[i + 1];
+				ret = kstrtou8(buf, 16, &p[i/2]);
+				if (ret)
+					DBGLOG(INIT, WARN, "kstrtou8 failed, i=%d\n", i);
+			}
+		} else {
+			DBGLOG(INIT, WARN, "idme wifi_mfg len err=%d\n", len);
+			ret = -1;
+		}
+	} else {
+		DBGLOG(INIT, WARN, "no idme wifi_mfg\n");
+		ret = -1;
+	}
+
+	return ret;
+}
+
+static void idme_get_board_id(P_REG_INFO_T prRegInfo)
+{
+	struct device_node *ap;
+	int len;
+
+	ap = of_find_node_by_path(IDME_OF_BOARD_ID);
+	if (likely(ap)) {
+		const char *board_id = of_get_property(ap, "value", &len);
+
+		if (likely(len >= 16))
+			memcpy(idme_board_id, board_id, sizeof(idme_board_id));
+	}
+}
+#endif
+
 /*----------------------------------------------------------------------------*/
 /*!
 * \brief Wlan probe function. This function probes and initializes the device.
@@ -1953,8 +2112,21 @@ static INT_32 wlanProbe(PVOID pvData)
 			prAdapter->fgIsFwOwn = TRUE;
 			nicPmTriggerDriverOwn(prAdapter);
 
+#ifdef CONFIG_IDME
+			if (idme_get_wifi_mfg(prRegInfo) == 0) { /* read idme OK */
+				/* copy idme Wifi data to prRegInfo */
+				wlanCopyIdmeWifiMfg(prRegInfo);
+				prGlueInfo->fgNvramAvailable = TRUE;
+			} else
+#endif
+
 			/* Load NVRAM content to REG_INFO_T */
 			glLoadNvram(prGlueInfo, prRegInfo);
+
+#ifdef CONFIG_IDME
+			idme_get_mac_addr(prRegInfo);
+			idme_get_board_id(prRegInfo);
+#endif
 
 			/* kalMemCopy(&prGlueInfo->rRegInfo, prRegInfo, sizeof(REG_INFO_T)); */
 
