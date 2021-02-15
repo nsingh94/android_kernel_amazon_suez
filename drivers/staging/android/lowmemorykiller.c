@@ -110,9 +110,6 @@ static int total_low_ratio = 1;
 static struct task_struct *lowmem_deathpending;
 static unsigned long lowmem_deathpending_timeout;
 
-/* ACOS_MOD_BEGIN {fwk_crash_log_collection} */
-/* Declarations */
-void ion_mm_heap_memory_detail_lmk(void);
 /* Constants */
 static int BUFFER_SIZE = 16*1024;
 static int ELEMENT_SIZE = 256;
@@ -528,8 +525,6 @@ log_again:
 				/* ACOS_MOD_BEGIN {fwk_crash_log_collection} */
 				lowmem_print(1, "ion_mm_heap_total_memory[%ld]\n",(unsigned long)ion_mm_heap_total_memory());
 				ion_mm_heap_memory_detail();
-				if (foreground_kill)
-					ion_mm_heap_memory_detail_lmk();
 				/* ACOS_MOD_END {fwk_crash_log_collection} */
 			#endif
 			#ifdef CONFIG_MTK_GPU_SUPPORT
