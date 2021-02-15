@@ -74,7 +74,7 @@ static u32 magicArray[16] = {
 	(WAKE_SRC_KP | WAKE_SRC_GPT | WAKE_SRC_EINT |        \
 	WAKE_SRC_MD32 | WAKE_SRC_USB_CD | WAKE_SRC_USB_PDN |  \
 	WAKE_SRC_AFE | WAKE_SRC_CIRQ | WAKE_SRC_SYSPWREQ |         \
-	WAKE_SRC_CPU_IRQ)
+	WAKE_SRC_SEJ | WAKE_SRC_CPU_IRQ)
 #endif
 
 #define WAKE_SRC_FOR_MD32  0                                          \

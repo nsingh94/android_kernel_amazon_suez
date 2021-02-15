@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include <linux/kernel.h>
@@ -152,6 +152,8 @@ static ssize_t show_pwr_ctrl(const struct pwr_ctrl *pwrctrl, char *buf)
 	p += sprintf(p, "param2 = 0x%x\n", pwrctrl->param2);
 	p += sprintf(p, "param3 = 0x%x\n", pwrctrl->param3);
 
+	p += sprintf(p, "enable_log = 0x%x\n", pwrctrl->enable_log);
+
 	BUG_ON(p - buf >= PAGE_SIZE);
 	return p - buf;
 }
@@ -280,6 +282,9 @@ static ssize_t store_pwr_ctrl(struct pwr_ctrl *pwrctrl, const char *buf, size_t 
 		pwrctrl->param2 = val;
 	else if (!strcmp(cmd, "param3"))
 		pwrctrl->param3 = val;
+
+	else if (!strcmp(cmd, "enable_log"))
+		pwrctrl->enable_log = val;
 	else
 		return -EINVAL;
 

@@ -29,7 +29,7 @@
 #define GPU_DVFS_FREQ1                  (698000) /* KHz */
 #define GPU_DVFS_FREQ2                  (598000) /* KHz */
 #define GPU_DVFS_FREQ3                  (494000) /* KHz */
-#define GPU_DVFS_FREQ4                  (455000) /* KHz */
+#define GPU_DVFS_FREQ4                  (445000) /* KHz */
 #define GPU_DVFS_FREQ5                  (396500) /* KHz */
 #define GPU_DVFS_FREQ6                  (299000) /* KHz */
 #define GPU_DVFS_FREQ7                  (253500) /* KHz */

@@ -281,17 +281,23 @@ static int subsys_is_on(enum subsys_id id)
 	return (sta & mask) && (sta_s & mask);
 }
 
-static void enable_subsys_clocks(void)
+static void enable_mux(int id, char *name)
 {
+	if (id != MT_MUX_MM)
+		return;
+
 	clk_prepare_enable(mm_sel);
-	/* To avoid system-hung by reading usb0 regiser,
+	/* To avoid system-bung by reading usb0 regiser,
 	 * peri_usb0 clock needs to be enabled first.
 	 */
 	clk_prepare_enable(peri_usb0);
 }
 
-static void disable_subsys_clocks(void)
+static void disable_mux(int id, char *name)
 {
+	if (id != MT_MUX_MM)
+		return;
+
 	clk_disable_unprepare(mm_sel);
 	clk_disable_unprepare(peri_usb0);
 }
@@ -981,7 +987,7 @@ static ssize_t dcm_state_store(struct kobject *kobj,
 		to avoid system crash while screen is off
 		(screen off with USB cable)
 		*/
-		enable_subsys_clocks();
+		enable_mux(MT_MUX_MM, "DCM");
 
 		if (!strcmp(cmd, "enable")) {
 			dcm_dump_regs(mask);
@@ -997,7 +1003,7 @@ static ssize_t dcm_state_store(struct kobject *kobj,
 			dcm_err("Please: cat /sys/power/dcm_state\n");
 		}
 
-		disable_subsys_clocks();
+		disable_mux(MT_MUX_MM, "DCM");
 
 		return n;
 	}

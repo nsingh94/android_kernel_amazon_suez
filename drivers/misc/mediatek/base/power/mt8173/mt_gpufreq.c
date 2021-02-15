@@ -88,8 +88,15 @@ static gpufreq_mfgclock_notify g_pGpufreq_mfgclock_disable_notify;
 /***************************
 * GPU Frequency Table
 ****************************/
-/* 500MHz */
+/* 450MHz */
 static struct mt_gpufreq_table_info mt_gpufreq_opp_tbl_0[] = {
+	GPUOP_FREQ_TBL(GPU_DVFS_FREQ4, GPU_DVFS_VOLT2, 0),
+	GPUOP_FREQ_TBL(GPU_DVFS_FREQ5, GPU_DVFS_VOLT2, 1),
+	GPUOP_FREQ_TBL(GPU_DVFS_FREQ6, GPU_DVFS_VOLT2, 2),
+	GPUOP_FREQ_TBL(GPU_DVFS_FREQ7, GPU_DVFS_VOLT2, 3),
+};
+/* 500MHz */
+static struct mt_gpufreq_table_info mt_gpufreq_opp_tbl_1[] = {
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ3, GPU_DVFS_VOLT1, 0),
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ4, GPU_DVFS_VOLT2, 1),
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ5, GPU_DVFS_VOLT2, 2),
@@ -97,19 +104,11 @@ static struct mt_gpufreq_table_info mt_gpufreq_opp_tbl_0[] = {
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ7, GPU_DVFS_VOLT2, 4),
 };
 /* 600MHz */
-static struct mt_gpufreq_table_info mt_gpufreq_opp_tbl_1[] = {
+static struct mt_gpufreq_table_info mt_gpufreq_opp_tbl_2[] = {
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ2, GPU_DVFS_VOLT1, 0),
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ4, GPU_DVFS_VOLT2, 1),
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ5, GPU_DVFS_VOLT2, 2),
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ6, GPU_DVFS_VOLT2, 3),
-	GPUOP_FREQ_TBL(GPU_DVFS_FREQ7, GPU_DVFS_VOLT2, 4),
-};
-/* 700MHz */
-static struct mt_gpufreq_table_info mt_gpufreq_opp_tbl_2[] = {
-	GPUOP_FREQ_TBL(GPU_DVFS_FREQ1, GPU_DVFS_VOLT1, 0),
-	GPUOP_FREQ_TBL(GPU_DVFS_FREQ2, GPU_DVFS_VOLT1, 1),
-	GPUOP_FREQ_TBL(GPU_DVFS_FREQ4, GPU_DVFS_VOLT2, 2),
-	GPUOP_FREQ_TBL(GPU_DVFS_FREQ5, GPU_DVFS_VOLT2, 3),
 	GPUOP_FREQ_TBL(GPU_DVFS_FREQ7, GPU_DVFS_VOLT2, 4),
 };
 
@@ -178,7 +177,7 @@ static int  mt_gpufreq_ptpod_disable_idx;
 static void mt_gpu_clock_switch(unsigned int freq_new);
 static void mt_gpu_volt_switch(unsigned int volt_old, unsigned int volt_new);
 
-#define GPU_DEFAULT_MAX_FREQ_MHZ    500
+#define GPU_DEFAULT_MAX_FREQ_MHZ    450
 #define GPU_DEFAULT_TYPE    0
 
 /*************************************************************************************
@@ -195,6 +194,11 @@ static unsigned int mt_gpufreq_check_dvfs_efuse(void)
 
 	pr_debug("mt_gpufreq_dvfs_mmpll_spd_bond = 0x%x ([2]=%x, [1:0]=%x)\n",
 		mt_gpufreq_dvfs_mmpll_spd_bond, mmpll_spd_bond_2, mmpll_spd_bond);
+
+    /* If using mt6311 pmic, should restrict gpu top freq as 450MHz. */
+#ifdef CONFIG_REGULATOR_MT6311
+	return 0;
+#endif
 
 	/*
 	   No efuse,  use frequency in device tree to determine GPU table type!

@@ -2273,6 +2273,50 @@ void ptp_init02(void)
 }
 
 #if EN_PTP_OD
+static char *readline(struct file *fp)
+{
+#define BUFSIZE 1024
+	static char buf[BUFSIZE];	/* TODO: FIXME, dynamic alloc */
+	static int buf_end;
+	static int line_start;
+	static int line_end;
+	char *ret;
+
+	FUNC_ENTER(FUNC_LV_HELP);
+ empty:
+
+	if (line_start >= buf_end) {
+		line_start = 0;
+		buf_end = fp->f_op->read(fp, &buf[line_end],
+		sizeof(buf) - line_end, &fp->f_pos);
+
+		if (0 == buf_end) {
+			line_end = 0;
+			return NULL;
+		}
+
+		buf_end += line_end;
+	}
+
+	while (buf[line_end] != '\n') {
+		line_end++;
+
+		if (line_end >= buf_end) {
+			memcpy(&buf[0], &buf[line_start], buf_end - line_start);
+			line_end = buf_end - line_start;
+			line_start = buf_end;
+			goto empty;
+		}
+	}
+
+	buf[line_end] = '\0';
+	ret = &buf[line_start];
+	line_start = line_end + 1;
+
+	FUNC_EXIT(FUNC_LV_HELP);
+
+	return ret;
+}
 
 /* leakage */
 unsigned int leakage_core;
@@ -2289,38 +2333,58 @@ void get_devinfo(struct ptp_devinfo *p)
 	/* TODO: Read devinfo from file system? */
 #if 1				/* FIXME: ned get_devinfo_with_index() ready */
 	{
-		int i;
+#define PTP_DEVINFO_FILEPATH "/system/20140115_ptpod_csv.csv"
 
-		val[4] = get_devinfo_with_index(15);	/* M_HW_RES4 */
-		val[5] = get_devinfo_with_index(16);	/* M_HW_RES5 */
+		struct file *fp;
 
-		/* search table (temp) */
-		#ifdef DEVINFO
-		for (i = 0; i < ARRAY_SIZE(devinfo); i++) {
-			if (val[4] == devinfo[i].M_HW_RES4 &&
-				val[5] == devinfo[i].M_HW_RES5) {
-				ptp_notice("get array\n");
-				val[0] = devinfo[i].M_HW_RES0;
-				val[1] = devinfo[i].M_HW_RES1;
-				val[2] = get_devinfo_with_index(9);
-				val[3] = devinfo[i].M_HW_RES3;
-				val[6] = devinfo[i].M_HW_RES6;
-				val[7] = devinfo[i].M_HW_RES7;
-				val[8] = devinfo[i].M_HW_RES8;
-				val[9] = devinfo[i].M_HW_RES9;
-				leakage_core = devinfo[i].core;
-				leakage_gpu = devinfo[i].gpu;
-				leakage_sram2 = devinfo[i].sram2;
-				leakage_sram1 = devinfo[i].sram1;
+		fp = filp_open(PTP_DEVINFO_FILEPATH, O_RDONLY, 0644);
 
-				p->PTPINITEN = 1;
-				p->PTPMONEN = 1;
+		if (IS_ERR(fp)) {
+			int i;
 
-				break;
+			val[4] = get_devinfo_with_index(15);	/* M_HW_RES4 */
+			val[5] = get_devinfo_with_index(16);	/* M_HW_RES5 */
+
+			/* search table (temp) */
+			#ifdef DEVINFO
+			for (i = 0; i < ARRAY_SIZE(devinfo); i++) {
+				if (val[4] == devinfo[i].M_HW_RES4 &&
+					val[5] == devinfo[i].M_HW_RES5) {
+					ptp_notice("get array\n");
+					val[0] = devinfo[i].M_HW_RES0;
+					val[1] = devinfo[i].M_HW_RES1;
+					val[2] = get_devinfo_with_index(9);
+					val[3] = devinfo[i].M_HW_RES3;
+					val[6] = devinfo[i].M_HW_RES6;
+					val[7] = devinfo[i].M_HW_RES7;
+					val[8] = devinfo[i].M_HW_RES8;
+					val[9] = devinfo[i].M_HW_RES9;
+					leakage_core = devinfo[i].core;
+					leakage_gpu = devinfo[i].gpu;
+					leakage_sram2 = devinfo[i].sram2;
+					leakage_sram1 = devinfo[i].sram1;
+
+					p->PTPINITEN = 1;
+					p->PTPMONEN = 1;
+
+					break;
+				}
 			}
-		}
-		/* get efuse */
-		if (i >= ARRAY_SIZE(devinfo)) {
+			/* get efuse */
+			if (i >= ARRAY_SIZE(devinfo)) {
+				ptp_notice("get efuse\n");
+				val[0] = get_devinfo_with_index(7);
+				val[1] = get_devinfo_with_index(8);
+				val[2] = get_devinfo_with_index(9);
+				val[3] = get_devinfo_with_index(14);
+				val[4] = get_devinfo_with_index(15);
+				val[5] = get_devinfo_with_index(16);
+				val[6] = get_devinfo_with_index(17);
+				val[7] = get_devinfo_with_index(18);
+				val[8] = get_devinfo_with_index(19);
+				val[9] = get_devinfo_with_index(21);
+			}
+			#else
 			ptp_notice("get efuse\n");
 			val[0] = get_devinfo_with_index(7);
 			val[1] = get_devinfo_with_index(8);
@@ -2332,37 +2396,49 @@ void get_devinfo(struct ptp_devinfo *p)
 			val[7] = get_devinfo_with_index(18);
 			val[8] = get_devinfo_with_index(19);
 			val[9] = get_devinfo_with_index(21);
+			#endif
+			#ifdef DEVINFO
+			if (0 == ptp_devinfo.PTPINITEN) {
+				ptp_error("hard code\n");
+				val[0] = 0x0F0F0F0F;
+				val[1] = 0xBABAB9B6;
+				val[2] = 0x00000000;
+				val[3] = 0x00000000;
+				val[4] = 0x00000003;
+				val[5] = 0x00000000;
+				val[6] = 0x00000000;
+				val[7] = 0x32271E37;
+				val[8] = 0x252B1912;
+				val[9] = 0x434C854B;
+			}
+			#endif
+			for (i = 0;
+			i < sizeof(struct ptp_devinfo) / sizeof(unsigned int);
+			i++)
+				ptp_notice("M_HW_RES%d\t= 0x%08X\n", i, val[i]);
+		} else {
+			char *line;
+			int ser_num;
+
+			/* skip two lines */
+			readline(fp);
+			readline(fp);
+
+			while (NULL != (line = readline(fp))) {
+				if (sscanf(line,
+					"%d,%d,%d,0X%08X,0X%08X,0X%08X,0X%08X,0X%08X",
+					&ser_num, &val[4], &val[5], &val[0],
+					&val[1], &val[7],
+					&val[8], &val[9]) == 8)
+					ptp_notice("sscanf() done\n");
+				else
+					ptp_notice("sscanf() fail\n");
+
+				if (val[4] == get_devinfo_with_index(15)
+					&& val[5] == get_devinfo_with_index(16))
+					break;
+			}
 		}
-		#else
-		ptp_notice("get efuse\n");
-		val[0] = get_devinfo_with_index(7);
-		val[1] = get_devinfo_with_index(8);
-		val[2] = get_devinfo_with_index(9);
-		val[3] = get_devinfo_with_index(14);
-		val[4] = get_devinfo_with_index(15);
-		val[5] = get_devinfo_with_index(16);
-		val[6] = get_devinfo_with_index(17);
-		val[7] = get_devinfo_with_index(18);
-		val[8] = get_devinfo_with_index(19);
-		val[9] = get_devinfo_with_index(21);
-		#endif
-		#ifdef DEVINFO
-		if (0 == ptp_devinfo.PTPINITEN) {
-			ptp_error("hard code\n");
-			val[0] = 0x0F0F0F0F;
-			val[1] = 0xBABAB9B6;
-			val[2] = 0x00000000;
-			val[3] = 0x00000000;
-			val[4] = 0x00000003;
-			val[5] = 0x00000000;
-			val[6] = 0x00000000;
-			val[7] = 0x32271E37;
-			val[8] = 0x252B1912;
-			val[9] = 0x434C854B;
-		}
-		#endif
-		for (i = 0; i < sizeof(struct ptp_devinfo) / sizeof(unsigned int); i++)
-			ptp_notice("M_HW_RES%d\t= 0x%08X\n", i, val[i]);
 	}
 #else
 	val[0] = get_devinfo_with_index(7);
@@ -2401,10 +2477,8 @@ static int ptp_probe(struct platform_device *pdev)
 	FUNC_ENTER(FUNC_LV_MODULE);
 
 	/* wait for Vgpu power */
-	if (!mt_gpucore_ready()) {
-		ptp_error("ptp_probe: GPU core is not ready\n");
+	if (!mt_gpucore_ready())
 		return -EPROBE_DEFER;
-	}
 
 	ptpod_id = (ptp_devinfo.M_HW_RES5 >> PTPOD_ID_SHIFT) & PTPOD_ID_MASK;
 	dev_dbg(&pdev->dev, "ptpod_id: %d\n", ptpod_id);

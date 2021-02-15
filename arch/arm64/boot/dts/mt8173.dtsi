@@ -119,6 +119,16 @@
 		};
 	};
 
+	spm: spm{
+		compatible = "mediatek,mt8173-spm";
+		clocks = <&topckgen CLK_TOP_SYSPLL1_D2>,
+				<&clk26m>,
+				<&topckgen CLK_TOP_SCP_SEL>;
+		clock-names =	"syspll1_d2",
+				"clk26m",
+				"scp_sel";
+	};
+
 	mtvcoredvfs: mtvcoredvfs{
 		compatible = "mediatek,mt8173-vcoredvfs";
 		clocks = <&apmixedsys CLK_APMIXED_VENCPLL>,
@@ -211,18 +221,6 @@
 		compatible = "fixed-clock";
 		clock-frequency = <26000000>;
 		#clock-cells = <0>;
-	};
-
-	pmu {
-		compatible = "arm,armv8-pmuv3";
-		interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_LOW>,
-			     <GIC_SPI 9 IRQ_TYPE_LEVEL_LOW>,
-			     <GIC_SPI 12 IRQ_TYPE_LEVEL_LOW>,
-			     <GIC_SPI 13 IRQ_TYPE_LEVEL_LOW>;
-		interrupt-affinity = <&cpu0>,
-				     <&cpu1>,
-				     <&cpu2>,
-				     <&cpu3>;
 	};
 
 	timer {

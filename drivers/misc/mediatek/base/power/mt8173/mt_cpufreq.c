@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 /**
@@ -473,15 +473,15 @@ static unsigned int read_efuse_speed(enum mt_cpu_dvfs_id id)
 		efuse = _GET_BITS_VAL_(2:0, get_devinfo_with_index(CPUFREQ_EFUSE_INDEX));
 		switch (efuse) {
 		case 0:
-			lv = CPU_LEVEL_2;	/* default = sloane = [1.6G, 2.0G] */
+			lv = CPU_LEVEL_2;	/* default = abc123 = [1.6G, 2.0G] */
 #ifdef CONFIG_TB8173_P1
 			lv = CPU_LEVEL_4;	/* p1 = [1.4G, 1.8G] */
 #endif
 #ifdef CONFIG_TB8173_P1_PLUS
 			lv = CPU_LEVEL_2;	/* p1_plus = [1.6G, 2.0G], set to [1.8G, 2.1G] for SB IC */
 #endif
-#ifdef CONFIG_SND_SOC_MT8173_SLOANE
-			lv = CPU_LEVEL_2;	/* sloane = [1.6G, 2.0G] */
+#ifdef CONFIG_SND_SOC_MT8173_abc123
+			lv = CPU_LEVEL_2;	/* abc123 = [1.6G, 2.0G] */
 #endif
 #ifdef CONFIG_BX8173_P12
 			lv = CPU_LEVEL_4;	/* bx8173p12 = [1.4G, 1.8G] */
@@ -515,15 +515,15 @@ static unsigned int read_efuse_speed(enum mt_cpu_dvfs_id id)
 		efuse = _GET_BITS_VAL_(29:28, get_devinfo_with_index(CPUFREQ_EFUSE_INDEX));
 		switch (efuse) {
 		case 0:
-			lv = CPU_LEVEL_3;	/* default = sloane = [1.6G, 2.0G] */
+			lv = CPU_LEVEL_3;	/* default = abc123 = [1.6G, 2.0G] */
 #ifdef CONFIG_TB8173_P1
 			lv = CPU_LEVEL_5;	/* p1 = [1.4G, 1.8G] */
 #endif
 #ifdef CONFIG_TB8173_P1_PLUS
 			lv = CPU_LEVEL_3;	/* p1_plus = [1.6G, 2.0G], set to [1.8G, 2.1G] for SB IC */
 #endif
-#ifdef CONFIG_SND_SOC_MT8173_SLOANE
-			lv = CPU_LEVEL_3;	/* sloane = [1.6G, 2.0G] */
+#ifdef CONFIG_SND_SOC_MT8173_abc123
+			lv = CPU_LEVEL_3;	/* abc123 = [1.6G, 2.0G] */
 #endif
 #ifdef CONFIG_BX8173_P12
 			lv = CPU_LEVEL_5;	/* bx8173p12 = [1.4G, 1.8G] */
@@ -804,7 +804,6 @@ void mt_cpufreq_set_pmic_phase(enum pmic_wrap_phase_id phase)
 {
 	int i;
 	unsigned long flags;
-	uint32_t rdata = 0;
 
 	FUNC_ENTER(FUNC_LV_API);
 
@@ -824,11 +823,6 @@ void mt_cpufreq_set_pmic_phase(enum pmic_wrap_phase_id phase)
 	pmic_wrap_lock(flags);
 
 	pw.phase = phase;
-
-	if (phase == PMIC_WRAP_PHASE_SODI) {
-		rdata = regulator_get_voltage(reg_vpca53) / 1000;
-		pw.set[phase]._[IDX_SO_VPROC_CA7_NORMAL].cmd_wdata = VOLT_TO_PMIC_VAL(rdata);
-	}
 
 	for (i = 0; i < pw.set[phase].nr_idx; i++) {
 		cpufreq_write(pw.addr[i].cmd_addr, pw.set[phase]._[i].cmd_addr);
@@ -1335,10 +1329,14 @@ static int num_online_cpus_big_delta;
 static enum turbo_mode get_turbo_mode(struct mt_cpu_dvfs *p, unsigned int target_khz)
 {
 	enum turbo_mode mode = TURBO_MODE_NONE;
-	int temp =
-	    tscpu_get_bL_temp(cpu_dvfs_is(p, MT_CPU_DVFS_LITTLE) ? THERMAL_BANK0 : THERMAL_BANK1);
+	int temp;
 	int num_online_cpus_little = 0, num_online_cpus_big = 0;
 	int i;
+
+	if (p->turbo_mode == 0)
+		return TURBO_MODE_NONE;
+
+	temp = tscpu_get_bL_temp(cpu_dvfs_is(p, MT_CPU_DVFS_LITTLE) ? THERMAL_BANK0 : THERMAL_BANK1);
 
 	if (-1 == hps_get_num_online_cpus(&num_online_cpus_little, &num_online_cpus_big)) {
 		num_online_cpus_little = 2;
@@ -3641,7 +3639,7 @@ void mt_cpufreq_enable_by_ptpod(enum mt_cpu_dvfs_id id)
 	if (id == MT_CPU_DVFS_LITTLE) {
 		regulator_set_mode(reg_vpca53, REGULATOR_MODE_NORMAL);
 		if (regulator_get_mode(reg_vpca53) != REGULATOR_MODE_NORMAL)
-			cpufreq_err("Vpca53 should be REGULATOR_MODE_NORMAL(%d), but mode = %d\n",
+			cpufreq_err("vpca53 should be REGULATOR_MODE_NORMAL(%d), but mode = %d\n",
 							REGULATOR_MODE_NORMAL, regulator_get_mode(reg_vpca53));
 	} else {
 		regulator_set_mode(reg_ext_vpca57, REGULATOR_MODE_NORMAL);
@@ -3728,9 +3726,6 @@ int mt_cpufreq_thermal_protect(unsigned int limited_power, unsigned int limitor_
 		FUNC_EXIT(FUNC_LV_API);
 		return -1;
 	}
-
-	if (!_mt_cpufreq_pdrv_probed)
-		return -1;
 
 	if (limited_power > power_budget_upper_bound)
 		limited_power = 0;
@@ -4522,8 +4517,6 @@ static void _mt_cpufreq_lcm_status_switch(int onoff)
 	struct cpufreq_policy *policy;
 	#endif
 
-	if (!_mt_cpufreq_pdrv_probed)
-		return;
 	cpufreq_info("@%s: LCM is %s\n", __func__, (onoff) ? "on" : "off");
 
 	/* onoff = 0: LCM OFF */
@@ -4822,8 +4815,7 @@ static int _mt_cpufreq_pdrv_probe(struct platform_device *pdev)
 	    VOLT_TO_PMIC_VAL(rdata);
 	pw.set[PMIC_WRAP_PHASE_DEEPIDLE]._[IDX_DI_VCORE_PDN_NORMAL].cmd_wdata =
 	    VOLT_TO_PMIC_VAL(rdata);
-	pw.set[PMIC_WRAP_PHASE_SODI]._[IDX_SO_VSRAM_CA7_FAST_TRSN_DIS].cmd_wdata =
-	    VOLT_TO_PMIC_VAL(rdata);
+	pw.set[PMIC_WRAP_PHASE_SODI]._[IDX_SO_VPROC_CA7_NORMAL].cmd_wdata = VOLT_TO_PMIC_VAL(rdata);
 	pw.set[PMIC_WRAP_PHASE_SODI]._[IDX_SO_VSRAM_CA7_FAST_TRSN_EN].cmd_wdata =
 	    VOLT_TO_PMIC_VAL(rdata);
 

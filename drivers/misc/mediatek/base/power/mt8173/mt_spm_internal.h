@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef _MT_SPM_INTERNAL_
@@ -204,6 +204,9 @@ struct pwr_ctrl {
 	u32 param1;
 	u32 param2;
 	u32 param3;
+
+	/* for logging */
+	u8 enable_log;
 };
 
 struct wake_status {

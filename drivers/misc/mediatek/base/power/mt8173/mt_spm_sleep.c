@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include <linux/init.h>
@@ -21,6 +21,7 @@
 /* TODO: wait irq/cirq driver ready */
 /* #include <irq.h> */
 #include <mt-plat/mt_cirq.h>
+#include <mt-plat/mt_gpt.h>
 
 #include <mach/upmu_sw.h>
 #include <mach/wd_api.h>
@@ -43,12 +44,6 @@
 #define SPM_BYPASS_SYSPWREQ     0
 #endif
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-/* forced trigger system_resume:off_mode metrics log */
-int force_gpt = 0;
-module_param(force_gpt, int, 0644);
-#endif
-
 static struct mt_wake_event spm_wake_event = {
 	.domain = "SPM",
 };
@@ -63,14 +58,18 @@ static int we_reg_count;
 #undef MCUCFG_BASE
 #ifdef CONFIG_OF
 #define MCUCFG_BASE          spm_mcucfg
+#define SPM_EINT_BASE	     spm_eint_base
 #else
 #define MCUCFG_BASE          (0xF0200000)
 #endif
 #define MP0_AXI_CONFIG          (MCUCFG_BASE + 0x2C)
 #define MP1_AXI_CONFIG          (MCUCFG_BASE + 0x22C)
 #define ACINACTM                (1<<4)
+#define EINT_AP_MAXNUMBER		224
 
 static int spm_dormant_sta = MT_CPU_DORMANT_RESET;
+bool wake_eint_status[EINT_AP_MAXNUMBER];
+bool eint_wake = 0;
 /**********************************************************
  * PCM sequence for cpu suspend
  **********************************************************/
@@ -241,9 +240,9 @@ static struct pcm_desc suspend_pcm_ca7 = {
 #define SPM_WAKE_PERIOD         600	/* sec */
 
 #define WAKE_SRC_FOR_SUSPEND \
-		(WAKE_SRC_KP | WAKE_SRC_EINT | WAKE_SRC_MD32 | \
+		(WAKE_SRC_EINT | WAKE_SRC_MD32 | \
 		 WAKE_SRC_USB_CD | WAKE_SRC_USB_PDN | WAKE_SRC_THERM | \
-		 WAKE_SRC_SYSPWREQ | WAKE_SRC_ALL_MD32 | \
+		 WAKE_SRC_SYSPWREQ | WAKE_SRC_SEJ | WAKE_SRC_ALL_MD32 | \
 		 WAKE_SRC_HDMI_CEC | WAKE_SRC_IRRX)
 
 #define WAKE_SRC_FOR_MD32  0
@@ -325,9 +324,11 @@ static void spm_kick_pcm_to_run(struct pwr_ctrl *pwrctrl)
 	spm_write(SPM_PCM_PASR_DPD_0, 0);
 
 /* FIXME: for 8173 fpga early porting */
-#if 0
+#if 1
 	/* make MD32 work in suspend: fscp_ck = CLK26M */
-	clkmux_sel(MT_MUX_SCP, 0, "SPM-Sleep");
+	clk_prepare_enable(spm_scp_sel);
+	clk_set_parent(spm_scp_sel, spm_clk26m);
+	clk_disable_unprepare(spm_scp_sel);
 #endif
 
 	__spm_kick_pcm_to_run(pwrctrl);
@@ -367,10 +368,30 @@ static void spm_clean_after_wakeup(void)
 	__spm_clean_after_wakeup();
 
 /* FIXME: for 8173 fpga early porting */
-#if 0
+#if 1
 	/* restore clock mux: fscp_ck = SYSPLL1_D2 */
-	clkmux_sel(MT_MUX_SCP, 1, "SPM-Sleep");
+	clk_prepare_enable(spm_scp_sel);
+	clk_set_parent(spm_scp_sel, spm_syspll1_d2);
+	clk_disable_unprepare(spm_scp_sel);
 #endif
+}
+
+static void spm_get_wake_eint_status(void)
+{
+	unsigned int status, index;
+	unsigned int offset, reg_base;
+
+	for (reg_base = 0; reg_base < EINT_AP_MAXNUMBER; reg_base += 32) {
+		status = spm_read((reg_base / 32) * 4 + SPM_EINT_BASE);
+		for (offset = 0; offset < 32; offset++) {
+			index = reg_base + offset;
+			if (index >= EINT_AP_MAXNUMBER)
+				break;
+			wake_eint_status[index] = (status >> offset) & 0x1;
+			if (wake_eint_status[index])
+				spm_crit2("wake up by EINT:%d\n", index);
+		}
+	}
 }
 
 static wake_reason_t spm_output_wake_reason(struct wake_status *wakesta, struct pcm_desc *pcmdesc)
@@ -380,10 +401,14 @@ static wake_reason_t spm_output_wake_reason(struct wake_status *wakesta, struct 
 	wr = __spm_output_wake_reason(wakesta, pcmdesc, true);
 
 	spm_crit2("big core = %d, suspend dormant state = %d\n", SPM_CTRL_BIG_CPU, spm_dormant_sta);
-/* TODO: eint may need to provide new APIs
-	if (wakesta->r12 & WAKE_SRC_EINT)
-		mt_eint_print_status();
-*/
+// TODO: eint may need to provide new APIs
+	if (wakesta->r12 & WAKE_SRC_EINT){
+		eint_wake = 1;
+		spm_get_wake_eint_status();
+	}
+	else{
+		eint_wake = 0;
+	}
 	return wr;
 }
 
@@ -619,17 +644,6 @@ wake_reason_t spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 */
 	spm_set_sysclk_settle();
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	/* forced trigger system_resume:off_mode metrics log */
-	if (force_gpt == 1) {
-		gpt_set_cmp(GPT4, 1);
-		start_gpt(GPT4);
-		/* wait HW GPT trigger */
-		udelay(200);
-		pwrctrl->wake_src |= WAKE_SRC_GPT;
-	}
-#endif
-
 	spm_crit2("sec = %u, wakesrc = 0x%x (%u)(%u)\n",
 		  sec, pwrctrl->wake_src, is_cpu_pdn(pwrctrl->pcm_flags),
 		  is_infra_pdn(pwrctrl->pcm_flags));
@@ -668,15 +682,6 @@ wake_reason_t spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 	request_uart_to_wakeup();
 
 	last_wr = spm_output_wake_reason(&wakesta, pcmdesc);
-
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	/* forced trigger system_resume:off_mode metrics log */
-	if (force_gpt == 1) {
-		if (gpt_check_and_ack_irq(GPT4))
-			spm_crit2("GPT4 triggered for off_mode metrics test\n");
-		pwrctrl->wake_src &= ~WAKE_SRC_GPT;
-	}
-#endif
 
  RESTORE_IRQ:
 
@@ -748,6 +753,13 @@ void spm_output_sleep_option(void)
 void spm_suspend_init(void)
 {
 	spm_set_suspend_pcm_ver();
+}
+
+bool spm_read_eint_status(unsigned int eint_num)
+{
+	if (eint_wake)
+		return wake_eint_status[eint_num];
+	return 0;
 }
 
 MODULE_DESCRIPTION("SPM-Sleep Driver v1.0");

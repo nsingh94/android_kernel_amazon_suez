@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 
@@ -24,7 +24,7 @@ extern s32 battery_meter_get_battery_voltage_cached(void);
 extern s32 battery_meter_get_average_battery_voltage(void);
 
 #define BATTERY_MAX_BUDGET  (-1)
-#define BATTERY_MIN_BUDGET  430
+#define BATTERY_MIN_BUDGET  800
 #define BATTERY_MAX_BUDGET_FACTOR  10
 #define BATTERY_MIN_BUDGET_FACTOR  0
 #define BATTERY_BUDGET_MIN_VOLTAGE 3450

@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #define _MT_IDLE_C
@@ -22,7 +22,6 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/spinlock.h>
-#include <linux/tick.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
@@ -37,8 +36,6 @@
 #define IDLE_HAVE_THERMAL	0
 #define IDLE_HAVE_GPUDVFS	0
 #define IDLE_HAVE_CPUXGPT	0
-#define IDLE_HAVE_STD_TIMER	0
-#define IDLE_EN_LOG_DBG		0
 
 #include <mt-plat/mt_gpt.h>
 #include "mt_spm.h"
@@ -81,16 +78,9 @@
 
 #define idle_err(fmt, args...)	pr_err(IDLE_TAG fmt, ##args)
 #define idle_warn(fmt, args...)	pr_warn(IDLE_TAG fmt, ##args)
-
-#if IDLE_EN_LOG_DBG
 #define idle_info(fmt, args...)	pr_debug(IDLE_TAG fmt, ##args)
 #define idle_dbg(fmt, args...)	pr_debug(IDLE_TAG fmt, ##args)
 #define idle_ver(fmt, args...)	pr_debug(IDLE_TAG fmt, ##args)
-#else /* !IDLE_EN_LOG_DBG */
-#define idle_info(fmt, args...)	do {} while (0)
-#define idle_dbg(fmt, args...)	do {} while (0)
-#define idle_ver(fmt, args...)	do {} while (0)
-#endif /* IDLE_EN_LOG_DBG */
 
 #define idle_gpt GPT4
 
@@ -122,14 +112,14 @@ enum {
 /* Idle handler on/off */
 static int idle_switch[NR_TYPES] = {
 	1,			/* dpidle switch */
-	0,			/* soidle switch */
+	1,			/* soidle switch */
 	0,			/* mcidle switch */
 	1,			/* slidle switch */
 	1,			/* rgidle switch */
 };
 
 static u32 dpidle_condition_mask[NR_GRPS] = {
-	0x6ff41ffc, /* PERI0 */
+	0x6ff4fffc, /* PERI0 */
 	0x00000006, /* PERI1 */
 	0x00000080, /* INFRA */
 	0xffff7fff, /* DISP0 */
@@ -144,7 +134,7 @@ static u32 dpidle_condition_mask[NR_GRPS] = {
 };
 
 static u32 soidle_condition_mask[NR_GRPS] = {
-	0x6ff40ffc, /* PERI0 */
+	0x6ff4effc, /* PERI0 */
 	0x00000006, /* PERI1 */
 	0x00000080, /* INFRA */
 	0x757a7ffc, /* DISP0 */
@@ -197,31 +187,23 @@ static bool		slidle_bypass_cg;
 
 /* SODI */
 static u32		soidle_block_mask[NR_GRPS];
-#if IDLE_HAVE_STD_TIMER
-static u32		soidle_time_critera = 2000; /* 2ms */
-#else /* !IDLE_HAVE_STD_TIMER */
 static u32		soidle_timer_left;
 static u32		soidle_timer_left2;
 #ifndef CONFIG_SMP
 static u32		soidle_timer_cmp;
 #endif
 static u32		soidle_time_critera = 26000; /* FIXME: need fine tune */
-#endif /* IDLE_HAVE_STD_TIMER */
 static unsigned long	soidle_cnt[NR_CPUS];
 static unsigned long	soidle_block_cnt[NR_CPUS][NR_REASONS];
 
 /* DeepIdle */
 static u32		dpidle_block_mask[NR_GRPS];
-#if IDLE_HAVE_STD_TIMER
-static u32		dpidle_time_critera = 2000; /* 2ms */
-#else /* !IDLE_HAVE_STD_TIMER */
 static u32		dpidle_timer_left;
 static u32		dpidle_timer_left2;
 #ifndef CONFIG_SMP
 static u32		dpidle_timer_cmp;
 #endif
 static u32		dpidle_time_critera = 26000;
-#endif /* IDLE_HAVE_STD_TIMER */
 static u64		dpidle_block_time_critera = 30000; /* default 30sec */
 static unsigned long	dpidle_cnt[NR_CPUS];
 static unsigned long	dpidle_block_cnt[NR_REASONS];
@@ -229,13 +211,9 @@ static u64		dpidle_block_prev_time;
 static u32		dpidle_bypass_cnd;
 
 /* MCDI */
-#if IDLE_HAVE_STD_TIMER
-static u32		mcidle_time_critera = 3000; /* 3ms */
-#else /* !IDLE_HAVE_STD_TIMER */
 static u32		mcidle_timer_left[NR_CPUS];
 static u32		mcidle_timer_left2[NR_CPUS];
 static u32		mcidle_time_critera = 39000; /* 3ms */
-#endif /* IDLE_HAVE_STD_TIMER */
 static unsigned long	mcidle_cnt[NR_CPUS];
 static unsigned long	mcidle_block_cnt[NR_CPUS][NR_REASONS];
 u64			mcidle_timer_before_wfi[NR_CPUS];
@@ -364,8 +342,6 @@ int __attribute__((weak)) stop_gpt(unsigned int id)
 	return 0;
 }
 
-#if !IDLE_HAVE_STD_TIMER
-
 unsigned long __attribute__((weak)) localtimer_get_counter(void)
 {
 	return 0;
@@ -375,8 +351,6 @@ int __attribute__((weak)) localtimer_set_next_event(unsigned long evt)
 {
 	return 0;
 }
-
-#endif /* !IDLE_HAVE_STD_TIMER */
 
 u64 __attribute__((weak)) localtimer_get_phy_count(void)
 {
@@ -473,24 +447,24 @@ static void get_all_clock_state(u32 clks[NR_GRPS])
 	}
 
 	if (sys_is_on(SYS_ISP) && is_valid_reg(imgsys_base))
-		clks[5] = 0xffffffff;			/* IMAGE */
+		clks[5] = ~idle_readl(IMG_CG_CON);	/* IMAGE */
 
 	if (sys_is_on(SYS_MFG) && is_valid_reg(mfgsys_base))
-		clks[6] = 0xffffffff;			/* MFG */
+		clks[6] = ~idle_readl(MFG_CG_CON);	/* MFG */
 
 	if (sys_is_on(SYS_AUDIO) && is_valid_reg(audiosys_base))
 		clks[7] = ~idle_readl(AUDIO_TOP_CON0);	/* AUDIO */
 
 	if (sys_is_on(SYS_VDE) && is_valid_reg(vdecsys_base)) {
-		clks[8] = 0xffffffff;			/* VDEC0 */
-		clks[9] = 0xffffffff;			/* VDEC1 */
+		clks[8] = idle_readl(VDEC_CKEN_SET);	/* VDEC0 */
+		clks[9] = idle_readl(LARB_CKEN_SET);	/* VDEC1 */
 	}
 
 	if (sys_is_on(SYS_VEN) && is_valid_reg(vencsys_base))
-		clks[10] = 0xffffffff;			/* VENC_JPEG */
+		clks[10] = idle_readl(VENC_CG_CON);	/* VENC_JPEG */
 
 	if (sys_is_on(SYS_VEN2) && is_valid_reg(vencltsys_base))
-		clks[11] = 0xffffffff;			/* VENC_LT */
+		clks[11] = idle_readl(VENCLT_CG_CON);	/* VENC_LT */
 }
 
 static bool clkmgr_idle_can_enter(
@@ -532,8 +506,6 @@ static const char *grp_get_name(int id)
 
 #define INVALID_GRP_ID(grp) (grp < 0 || grp >= NR_GRPS)
 
-#if !IDLE_HAVE_STD_TIMER
-
 static int idle_gpt_get_cnt(unsigned int id, unsigned int *ptr)
 {
 	unsigned int val[2] = {0};
@@ -555,8 +527,6 @@ static int idle_gpt_get_cmp(unsigned int id, unsigned int *ptr)
 
 	return ret;
 }
-
-#endif /* !IDLE_HAVE_STD_TIMER */
 
 static u64 idle_get_current_time_ms(void)
 {
@@ -637,10 +607,6 @@ EXPORT_SYMBOL(disable_soidle_by_bit);
 bool soidle_can_enter(int cpu)
 {
 	int reason = NR_REASONS;
-#if IDLE_HAVE_STD_TIMER
-	struct timespec t;
-	u32 expected_us;
-#endif
 
 	if (!only_one_cpu_online()) {
 		reason = BY_CPU;
@@ -667,14 +633,6 @@ bool soidle_can_enter(int cpu)
 	}
 #endif
 
-#if IDLE_HAVE_STD_TIMER
-	t = ktime_to_timespec(tick_nohz_get_sleep_length());
-	expected_us = t.tv_sec * USEC_PER_SEC + t.tv_nsec / NSEC_PER_USEC;
-	if (expected_us < soidle_time_critera) {
-		reason = BY_TMR;
-		goto out;
-	}
-#else /* !IDLE_HAVE_STD_TIMER */
 #ifdef CONFIG_SMP
 	soidle_timer_left = localtimer_get_counter();
 	if (soidle_timer_left < soidle_time_critera ||
@@ -690,7 +648,6 @@ bool soidle_can_enter(int cpu)
 		goto out;
 	}
 #endif
-#endif /* IDLE_HAVE_STD_TIMER */
 
 out:
 	if (reason < NR_REASONS) {
@@ -702,7 +659,6 @@ out:
 
 void soidle_before_wfi(int cpu)
 {
-#if !IDLE_HAVE_STD_TIMER
 #ifdef CONFIG_SMP
 	#if SODI_DVT_APxGPT && SODI_DVT_APxGPT_TimerCount_5S
 	soidle_timer_left2 = 65000000;
@@ -719,12 +675,10 @@ void soidle_before_wfi(int cpu)
 #else
 	idle_gpt_get_cnt(GPT1, &soidle_timer_left2);
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
 }
 
 void soidle_after_wfi(int cpu)
 {
-#if !IDLE_HAVE_STD_TIMER
 #ifdef CONFIG_SMP
 	if (gpt_check_and_ack_irq(idle_gpt))
 		localtimer_set_next_event(1);
@@ -744,8 +698,6 @@ void soidle_after_wfi(int cpu)
 		stop_gpt(idle_gpt);
 	}
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
-
 #if SODI_DVT_APxGPT
 	idle_info("soidle_cnt:%d\n", soidle_cnt[cpu]);
 #endif
@@ -759,10 +711,6 @@ static DEFINE_MUTEX(mcidle_locked);
 bool mcidle_can_enter(int cpu)
 {
 	int reason = NR_REASONS;
-#if IDLE_HAVE_STD_TIMER
-	struct timespec t;
-	u32 expected_us;
-#endif
 
 	if (cpu == 0 || topology_physical_package_id(cpu) == 1) {
 		reason = BY_VTG;
@@ -786,14 +734,6 @@ bool mcidle_can_enter(int cpu)
 	}
 #endif /* IDLE_HAVE_MCDI */
 
-#if IDLE_HAVE_STD_TIMER
-	t = ktime_to_timespec(tick_nohz_get_sleep_length());
-	expected_us = t.tv_sec * USEC_PER_SEC + t.tv_nsec / NSEC_PER_USEC;
-	if (expected_us < mcidle_time_critera) {
-		reason = BY_TMR;
-		goto mcidle_out;
-	}
-#else /* !IDLE_HAVE_STD_TIMER */
 	#if !MCDI_DVT_IPI && !MCDI_DVT_CPUxGPT
 	mcidle_timer_left[cpu] = localtimer_get_counter();
 	if (mcidle_timer_left[cpu] < mcidle_time_critera ||
@@ -802,7 +742,6 @@ bool mcidle_can_enter(int cpu)
 		goto mcidle_out;
 	}
 	#endif
-#endif /* IDLE_HAVE_STD_TIMER */
 
 mcidle_out:
 	if (reason < NR_REASONS) {
@@ -811,14 +750,10 @@ mcidle_out:
 	} else
 		return true;
 }
-
-#if !IDLE_HAVE_STD_TIMER
 bool spm_mcdi_xgpt_timeout[NR_CPUS];
-#endif
 
 void mcidle_before_wfi(int cpu)
 {
-#if !IDLE_HAVE_STD_TIMER
 #if !MCDI_DVT_IPI
 	u64 set_count = 0;
 
@@ -836,14 +771,12 @@ void mcidle_before_wfi(int cpu)
 
 	cpu_xgpt_set_cmp(cpu, set_count);
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
 }
 
 int mcdi_xgpt_wakeup_cnt[NR_CPUS];
 
 void mcidle_after_wfi(int cpu)
 {
-#if !IDLE_HAVE_STD_TIMER
 #if !MCDI_DVT_IPI
 	u64 cmp;
 
@@ -857,7 +790,6 @@ void mcidle_after_wfi(int cpu)
 		localtimer_set_next_event(1);
 #endif
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
 }
 
 unsigned int g_pre_SPM_MCDI_Abnormal_WakeUp = 0;
@@ -968,10 +900,6 @@ static bool dpidle_can_enter(void)
 	int reason = NR_REASONS;
 	int i = 0;
 	u64 dpidle_block_curr_time = 0;
-#if IDLE_HAVE_STD_TIMER
-	struct timespec t;
-	u32 expected_us;
-#endif
 
 #if IDLE_HAVE_CPUFREQ
 	if (!mt_cpufreq_earlysuspend_status_get()) {
@@ -1002,14 +930,6 @@ static bool dpidle_can_enter(void)
 		}
 	}
 
-#if IDLE_HAVE_STD_TIMER
-	t = ktime_to_timespec(tick_nohz_get_sleep_length());
-	expected_us = t.tv_sec * USEC_PER_SEC + t.tv_nsec / NSEC_PER_USEC;
-	if (expected_us < dpidle_time_critera) {
-		reason = BY_TMR;
-		goto out;
-	}
-#else /* !IDLE_HAVE_STD_TIMER */
 #ifdef CONFIG_SMP
 	dpidle_timer_left = localtimer_get_counter();
 	if (dpidle_timer_left < dpidle_time_critera ||
@@ -1025,7 +945,6 @@ static bool dpidle_can_enter(void)
 		goto out;
 	}
 #endif
-#endif /* IDLE_HAVE_STD_TIMER */
 
 out:
 	if (reason >= NR_REASONS) {
@@ -1076,7 +995,6 @@ void spm_dpidle_before_wfi(void)
 	backup_audintbus_26MHz();
 #endif
 
-#if !IDLE_HAVE_STD_TIMER
 #ifdef CONFIG_SMP
 	dpidle_timer_left2 = localtimer_get_counter();
 
@@ -1089,12 +1007,10 @@ void spm_dpidle_before_wfi(void)
 #else
 	idle_gpt_get_cnt(idle_gpt, &dpidle_timer_left2);
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
 }
 
 void spm_dpidle_after_wfi(void)
 {
-#if !IDLE_HAVE_STD_TIMER
 #ifdef CONFIG_SMP
 	if (gpt_check_and_ack_irq(idle_gpt)) {
 		/* waked up by WAKEUP_GPT */
@@ -1116,7 +1032,6 @@ void spm_dpidle_after_wfi(void)
 		/* GPT_ClearCount(WAKEUP_GPT); */
 	}
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
 
 #if AUDINTBUS_CLOCK_SWITCH
 	restore_audintbus();
@@ -1358,7 +1273,6 @@ static inline int soidle_handler(int cpu)
 	#if SODI_DVT_APxGPT
 	idle_info("SPM-Enter SODI-\n");
 	#endif
-#if !IDLE_HAVE_STD_TIMER
 #ifdef CONFIG_SMP
 	idle_ver("SO:timer_left=%u, timer_left2=%u, delta=%u\n",
 		soidle_timer_left, soidle_timer_left2,
@@ -1369,7 +1283,6 @@ static inline int soidle_handler(int cpu)
 		soidle_timer_left2 - soidle_timer_left,
 		soidle_timer_cmp - soidle_timer_left);
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
 
 	return 1;
 #else /* !IDLE_HAVE_SODI */
@@ -1424,7 +1337,6 @@ static inline int dpidle_handler(int cpu)
 	ret = 1;
 #endif /* IDLE_HAVE_DPIDLE */
 
-#if !IDLE_HAVE_STD_TIMER
 #ifdef CONFIG_SMP
 	idle_ver("DP:timer_left=%u, timer_left2=%u, delta=%u\n",
 		dpidle_timer_left, dpidle_timer_left2,
@@ -1435,7 +1347,6 @@ static inline int dpidle_handler(int cpu)
 		dpidle_timer_left2 - dpidle_timer_left,
 		dpidle_timer_cmp - dpidle_timer_left);
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
 
 	return ret;
 }
@@ -1575,7 +1486,6 @@ int dpidle_enter(int cpu)
 	spm_go_to_dpidle(slp_spm_deepidle_flags, 0);
 	dpidle_post_handler();
 
-#if !IDLE_HAVE_STD_TIMER
 #ifdef CONFIG_SMP
 	idle_ver("DP:timer_left=%u, timer_left2=%u, delta=%u\n",
 		dpidle_timer_left, dpidle_timer_left2,
@@ -1586,7 +1496,6 @@ int dpidle_enter(int cpu)
 		dpidle_timer_left2 - dpidle_timer_left,
 		dpidle_timer_cmp - dpidle_timer_left);
 #endif
-#endif /* !IDLE_HAVE_STD_TIMER */
 
 	return ret;
 }
@@ -2144,14 +2053,11 @@ static int mt_cpuidle_debugfs_init(void)
 
 void mt_cpuidle_framework_init(void)
 {
-#if !IDLE_HAVE_STD_TIMER
 	int err = 0;
 	int i = 0;
-#endif
 
 	idle_ver("[%s]entry!!\n", __func__);
 
-#if !IDLE_HAVE_STD_TIMER
 	err = request_gpt(idle_gpt, GPT_ONE_SHOT, GPT_CLK_SRC_SYS,
 		GPT_CLK_DIV_1, 0, NULL, GPT_NOAUTOEN);
 	if (err)
@@ -2164,7 +2070,6 @@ void mt_cpuidle_framework_init(void)
 
 	if (err)
 		idle_err("[%s]fail to request cpuxgpt\n", __func__);
-#endif /* !IDLE_HAVE_STD_TIMER */
 
 	iomap_init();
 	mt_cpuidle_debugfs_init();

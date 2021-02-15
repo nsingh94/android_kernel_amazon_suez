@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef _MT_SPM_
@@ -17,6 +17,7 @@
 #include <linux/kernel.h>
 #include <linux/io.h>
 #include <linux/device.h>
+#include <linux/clk.h>
 /* #include <mach/irqs.h> */
 
 #ifdef CONFIG_OF
@@ -36,6 +37,8 @@ extern u32 spm_irq_7;
 #else
 #include <mach/mt_reg_base.h>
 #endif
+
+extern void __iomem *spm_eint_base;
 
 #include <mt-plat/sync_write.h>
 #include <mt-plat/mt_io.h>
@@ -315,7 +318,7 @@ extern void spm_twam_disable_monitor(void);
 /* for Vcore DVFS */
 extern int spm_go_to_ddrdfs(u32 spm_flags, u32 spm_data);
 
-
+extern struct clk *spm_scp_sel, *spm_syspll1_d2, *spm_clk26m;
 /**************************************
  * Macro and Inline
  **************************************/

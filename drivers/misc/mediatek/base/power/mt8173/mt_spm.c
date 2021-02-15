@@ -1,20 +1,21 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
+#include <linux/platform_device.h>
 #include <linux/smp.h>
 #include <linux/delay.h>
 #include <linux/atomic.h>
@@ -39,6 +40,7 @@
 #ifdef CONFIG_OF
 void __iomem *spm_base;
 void __iomem *spm_mcucfg;
+void __iomem *spm_eint_base;
 u32 spm_irq_0 = 155;
 u32 spm_irq_1 = 156;
 u32 spm_irq_2 = 157;
@@ -219,6 +221,13 @@ static void spm_register_init(void)
 	spm_mcucfg = of_iomap(node, 0);
 	if (!spm_mcucfg)
 		spm_err("[MCUCFG] base failed\n");
+	/* EINT */
+	node = of_find_compatible_node(NULL, NULL, "mediatek,mt8173-pinctrl");
+	if (!node)
+		spm_err("pinctrl find node failed\n");
+	spm_eint_base = of_iomap(node, 0);
+	if (!spm_eint_base)
+		spm_err("get eint_base failed\n");
 
 	spm_err("spm_base = %p, spm_irq_0 = %d, spm_irq_1 = %d, spm_irq_2 = %d, spm_irq_3 = %d\n",
 		spm_base, spm_irq_0, spm_irq_1, spm_irq_2, spm_irq_3);
@@ -265,10 +274,49 @@ static void spm_register_init(void)
 	spin_unlock_irqrestore(&__spm_lock, flags);
 }
 
+static const struct of_device_id spm_of_ids[] = {
+	{.compatible = "mediatek,mt8173-spm",},
+	{}
+};
+
+struct clk *spm_scp_sel, *spm_syspll1_d2, *spm_clk26m;
+
+static int spm_probe(struct platform_device *pdev)
+{
+#ifdef CONFIG_OF
+	spm_scp_sel = devm_clk_get(&pdev->dev, "scp_sel");
+	spm_syspll1_d2 = devm_clk_get(&pdev->dev, "syspll1_d2");
+	spm_clk26m = devm_clk_get(&pdev->dev, "clk26m");
+#endif
+	return 0;
+}
+
+static int spm_remove(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static struct platform_driver spm_driver = {
+	.probe = spm_probe,
+	.remove	= spm_remove,
+	.driver = {
+		.name = "mt-spm",
+		.owner = THIS_MODULE,
+		.of_match_table = spm_of_ids,
+	}
+};
+
 static int __init spm_module_init(void)
 {
 	int r = 0;
 	struct wd_api *wd_api;
+
+	r = platform_driver_register(&spm_driver);
+
+	if (r) {
+		spm_notice("SPM platform driver register failed!\n");
+		return r;
+	}
 
 	spm_register_init();
 
