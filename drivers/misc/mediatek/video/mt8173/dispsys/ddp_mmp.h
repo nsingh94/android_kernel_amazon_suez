@@ -1,14 +1,15 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #ifndef __H_DDP_MMP__
@@ -117,6 +118,7 @@ typedef struct _DDP_MMP_Events {
 	MMP_Event dpmgr_wait_event_timeout;
 	MMP_Event cmdq_rebuild;
 	MMP_Event dsi_te;
+	MMP_Event dsi_wrlcm;
 } DDP_MMP_Events_t;
 
 DDP_MMP_Events_t *ddp_mmp_get_events(void);

@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/kernel.h>
@@ -81,13 +81,14 @@
 #ifdef CONFIG_MTK_HDMI_SUPPORT
 #include "extd_ddp.h"
 #include "extd_kernel_drv.h"
-
+/*#include "extd_drv.h"*/
+/*#include "hdmitx.h" */
+#ifdef CONFIG_ARCH_MT8173
 #define MMDVFS_ENABLE
+#endif
 #ifdef MMDVFS_ENABLE
 #include <mt_smi.h>
 #endif
-/*#include "extd_drv.h"*/
-/*#include "hdmitx.h" */
 #endif
 
 /* TODO: revise this later @xuecheng */
@@ -259,10 +260,10 @@ done:
 #ifdef CONFIG_MTK_HDMI_SUPPORT
 #if HDMI_SUB_PATH_BOOT
 #else
-	#ifdef MMDVFS_ENABLE
+#ifdef MMDVFS_ENABLE
 		if (mmdvfs_set_step(SMI_BWC_SCEN_HDMI, MMDVFS_VOLTAGE_HIGH))
 			DISPERR("HDMI mmdvfs_set_step error!");
-	#endif
+#endif
 		ext_disp_init(NULL, NULL, session);
 		last_config = *config;
 		create_session_count++;
@@ -345,10 +346,11 @@ int disp_destroy_session(disp_session_config *config)
 #ifdef CONFIG_MTK_HDMI_SUPPORT
 		ext_disp_deinit(NULL);
 		create_session_count--;
-		#ifdef MMDVFS_ENABLE
+#ifdef MMDVFS_ENABLE
 		if (mmdvfs_set_step(SMI_BWC_SCEN_HDMI, MMDVFS_VOLTAGE_LOW))
 			DISPERR("HDMI mmdvfs_set_step error!");
-		#endif
+#endif
+
 #endif
 	}
 #endif
@@ -548,7 +550,7 @@ int _ioctl_trigger_session(unsigned long arg)
 #ifdef CONFIG_MTK_HDMI_SUPPORT
 		mutex_lock(&disp_session_lock);
 
-#if HDMI_SUB_PATH_PRESENT_FENCE_SUPPORT
+#if defined(MTK_ALPS_BOX_SUPPORT)
 		if (config.present_fence_idx != -1) {
 			ext_disp_update_present_fence(config.present_fence_idx);
 			MMProfileLogEx(ddp_mmp_get_events()->Extd_present_fence_set,
@@ -635,7 +637,7 @@ int _ioctl_prepare_present_fence(unsigned long arg)
 		use_present_fence = 1;
 		break;
 
-#if HDMI_SUB_PATH_PRESENT_FENCE_SUPPORT
+#if defined(MTK_ALPS_BOX_SUPPORT)
 	case DISP_SESSION_EXTERNAL:
 		use_present_fence = 1;
 		break;
@@ -1444,44 +1446,6 @@ static int set_primary_buffer(disp_session_input_config session_input)
 	return 0;
 }
 
-static int _disp_validate_color_fmt(DISP_FORMAT fmt)
-{
-	unsigned int fmt_id = 0;
-
-	fmt_id = GET_DISP_FORMAT_ID(fmt);
-	if (fmt_id < GET_DISP_FORMAT_ID(DISP_FORMAT_RGB565) ||
-	    fmt_id > GET_DISP_FORMAT_ID(DISP_FORMAT_YV12)) {
-		DISPERR("%s: error format 0x%x\n", __func__, fmt);
-		return -1;
-	}
-
-	return 0;
-}
-
-static int _disp_validate_session_input_params(disp_session_input_config *cfg)
-{
-	unsigned int i = 0;
-	unsigned int max = HW_OVERLAY_COUNT;
-
-	if (cfg->config_layer_num > max) {
-		DISPERR("%s: config_layer_num(%u) > %u", __func__, cfg->config_layer_num, max);
-		return -1;
-	}
-
-	for (i = 0; i < cfg->config_layer_num; i++) {
-		if (cfg->config[i].layer_id >= max) {
-			DISPERR("%s: layer_id(%u) >= %u", __func__, cfg->config_layer_num, max);
-			return -1;
-		}
-
-		if (cfg->config[i].layer_enable
-			&& (_disp_validate_color_fmt(cfg->config[i].src_fmt) == -1))
-			return -1;
-	}
-
-	return 0;
-}
-
 int _ioctl_set_input_buffer(unsigned long arg)
 {
 	int ret = 0;
@@ -1518,9 +1482,6 @@ int _ioctl_set_input_buffer(unsigned long arg)
 		    session_input.config[0].tgt_offset_x,
 		    session_input.config[0].tgt_offset_y,
 		    session_input.config[0].tgt_width, session_input.config[0].tgt_height);
-
-	if (_disp_validate_session_input_params(&session_input) == -1)
-		return -EFAULT;
 
 	if (DISP_SESSION_TYPE(session_id) == DISP_SESSION_PRIMARY)
 		ret = set_primary_buffer(session_input);
@@ -1872,7 +1833,7 @@ int _ioctl_wait_vsync(unsigned long arg)
 	if (session_info)
 		dprec_start(&session_info->event_waitvsync, vsync_config.session_id, 0);
 
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 	ret = ext_disp_wait_for_vsync(&vsync_config);
 
 #else
@@ -2089,12 +2050,16 @@ const char *_session_ioctl_spy(unsigned int cmd)
 		return "DISP_IOCTL_SET_PQPARAM";
 	case DISP_IOCTL_GET_PQPARAM:
 		return "DISP_IOCTL_GET_PQPARAM";
+	case DISP_IOCTL_GET_PQINDEX:
+		return "DISP_IOCTL_GET_PQINDEX";
 	case DISP_IOCTL_SET_C1_PQPARAM:
 		return "DISP_IOCTL_SET_C1_PQPARAM";
 	case DISP_IOCTL_GET_C1_PQPARAM:
 		return "DISP_IOCTL_GET_C1_PQPARAM";
 	case DISP_IOCTL_SET_PQINDEX:
 		return "DISP_IOCTL_SET_PQINDEX";
+	case DISP_IOCTL_SET_COLOR_REG:
+		return "DISP_IOCTL_SET_COLOR_REG";
 	case DISP_IOCTL_SET_TDSHPINDEX:
 		return "DISP_IOCTL_SET_TDSHPINDEX";
 	case DISP_IOCTL_GET_TDSHPINDEX:
@@ -2109,10 +2074,6 @@ const char *_session_ioctl_spy(unsigned int cmd)
 		return "DISP_IOCTL_GET_PQ_GAL_PARAM";
 	case DISP_IOCTL_OD_CTL:
 		return "DISP_IOCTL_OD_CTL";
-	case DISP_IOCTL_SET_DCINDEX:
-		return "DISP_IOCTL_SET_DCINDEX";
-	case DISP_IOCTL_GET_DCINDEX:
-		return "DISP_IOCTL_GET_DCINDEX";
 	default:
 		{
 			return "unknown";
@@ -2176,6 +2137,7 @@ long mtk_disp_mgr_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		{
 			return _ioctl_set_output_buffer(arg);
 		}
+	case DISP_IOCTL_SET_COLOR_REG:
 	case DISP_IOCTL_AAL_EVENTCTL:
 	case DISP_IOCTL_AAL_GET_HIST:
 	case DISP_IOCTL_AAL_INIT_REG:
@@ -2187,6 +2149,7 @@ long mtk_disp_mgr_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case DISP_IOCTL_SET_C1_PQPARAM:
 	case DISP_IOCTL_GET_C1_PQPARAM:
 	case DISP_IOCTL_SET_PQINDEX:
+	case DISP_IOCTL_GET_PQINDEX:
 	case DISP_IOCTL_SET_TDSHPINDEX:
 	case DISP_IOCTL_GET_TDSHPINDEX:
 	case DISP_IOCTL_SET_PQ_CAM_PARAM:
@@ -2205,8 +2168,6 @@ long mtk_disp_mgr_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case DISP_IOCTL_PQ_SET_TDSHP_FLAG:
 	case DISP_IOCTL_PQ_GET_DC_PARAM:
 	case DISP_IOCTL_PQ_SET_DC_PARAM:
-	case DISP_IOCTL_SET_DCINDEX:
-	case DISP_IOCTL_GET_DCINDEX:
 		{
 			ret = primary_display_user_cmd(cmd, arg);
 			break;

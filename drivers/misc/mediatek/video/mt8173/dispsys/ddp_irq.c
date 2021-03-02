@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 
@@ -28,7 +28,6 @@
 #include "ddp_aal.h"
 #include "ddp_drv.h"
 #include "primary_display.h"
-#include "disp_drv_platform.h"
 
 /* IRQ log print kthread */
 static struct task_struct *disp_irq_log_task;
@@ -234,22 +233,26 @@ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 	unsigned int mutexID = 0;
 
 	MMProfileLogEx(ddp_mmp_get_events()->DDP_IRQ, MMProfileFlagStart, irq, 0);
+	/* printk("disp_irq_handler %d\n", irq); */
 	if (irq == ddp_irq_map[DISP_MODULE_DSI0] || irq == ddp_irq_map[DISP_MODULE_DSI1]) {
 		index = (irq == ddp_irq_map[DISP_MODULE_DSI0]) ? 0 : 1;
 		module =
 		    (irq == ddp_irq_map[DISP_MODULE_DSI0]) ? DISP_MODULE_DSI0 : DISP_MODULE_DSI1;
 		reg_val =
 		    (DISP_REG_GET(DISPSYS_DSI0_BASE + 0xC + index * DISP_INDEX_OFFSET) & 0xff);
+		if (primary_display_esd_cust_get() == 1)
+			reg_val = reg_val & 0xfffe;
 		DISP_CPU_REG_SET(DISPSYS_DSI0_BASE + 0xC + index * DISP_INDEX_OFFSET, ~reg_val);
 		/* MMProfileLogEx(ddp_mmp_get_events()->DSI_IRQ[index], MMProfileFlagPulse, reg_val, 0); */
 	} else if (irq == ddp_irq_map[DISP_MODULE_DPI0] || irq == ddp_irq_map[DISP_MODULE_DPI1]) {
+		/* printk("disp_irq_handler dpi: %d\n", irq); */
 		index = (irq == ddp_irq_map[DISP_MODULE_DPI0]) ? 0 : 1;
 		module =
 		    (irq == ddp_irq_map[DISP_MODULE_DPI0]) ? DISP_MODULE_DPI0 : DISP_MODULE_DPI1;
 		reg_val =
 		    (DISP_REG_GET(DISPSYS_DPI0_BASE + 0xC + index * DISP_INDEX_OFFSET) & 0xff);
 		if (reg_val & (1 << 0))
-			/*printk("IRQ: DPI%d VSYNC!\n", index);*/
+			/*printk("IRQ: DPI%d VSYNC!\n", index); */
 		if (reg_val & (1 << 1))
 			/*printk("IRQ: DPI%d VDE!\n", index); */
 		if (reg_val & (1 << 2))
@@ -490,14 +493,8 @@ static unsigned int ddp_intr_need_enable(DISP_MODULE_ENUM module)
 	case DISP_MODULE_MUTEX:
 	case DISP_MODULE_DSI0:
 	case DISP_MODULE_AAL:
-#if HDMI_MAIN_PATH
-#else
 	case DISP_MODULE_DPI0:
-#endif
 		return 1;
-#if HDMI_MAIN_PATH
-	case DISP_MODULE_DPI0:
-#endif
 	case DISP_MODULE_WDMA1:	/* FIXME: WDMA1 intr is abonrmal FPGA so mark first, enable after EVB works */
 	case DISP_MODULE_COLOR0:
 	case DISP_MODULE_COLOR1:

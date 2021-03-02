@@ -1,14 +1,15 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/delay.h>
@@ -92,7 +93,7 @@ int primary_display_use_m4u = 1;
 DISP_PRIMARY_PATH_MODE primary_display_mode = DIRECT_LINK_MODE;
 
 static unsigned long dc_vAddr[DISP_INTERNAL_BUFFER_COUNT];
-#if HDMI_SUB_PATH || HDMI_MAIN_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 #else
 static disp_internal_buffer_info *decouple_buffer_info[DISP_INTERNAL_BUFFER_COUNT];
 #endif
@@ -100,7 +101,6 @@ static RDMA_CONFIG_STRUCT decouple_rdma_config;
 static WDMA_CONFIG_STRUCT decouple_wdma_config;
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
 static DISP_BUFFER_TYPE g_wdma_rdma_security = DISP_NORMAL_BUFFER;
-bool g_secure_flag = false;
 /*just for test*/
 unsigned int primary_ovl0_handle;
 int primary_ovl0_handle_size;
@@ -478,8 +478,8 @@ int primary_display_save_power_for_idle(int enter, unsigned int need_primary_loc
 	DDPDBG("low power in, enter=%d.\n", enter);
 
 	if (primary_display_is_video_mode() == 1 && disp_low_power_reduse_fps == 1) {
-		_disp_primary_path_change_dst_clk(enter);
-		/* _disp_primary_path_set_vfp(enter); */
+		/*_disp_primary_path_change_dst_clk(enter);*/
+		_disp_primary_path_set_vfp(enter);
 	}
 
 	if (primary_display_is_video_mode() == 0)
@@ -493,10 +493,9 @@ int primary_display_save_power_for_idle(int enter, unsigned int need_primary_loc
 				if (pgc->session_mode == DISP_SESSION_DIRECT_LINK_MODE
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
 				    && !g_is_sec
-				    && !g_secure_flag
 #endif
 				    ) {
-					DDPMSG("[LP]switch to decouple.\n");
+					DDPDBG("[LP]switch to decouple.\n");
 					primary_display_switch_mode_nolock
 					    (DISP_SESSION_DECOUPLE_MODE, pgc->session_id, 1);
 					_disp_primary_low_power_change_ddp_clock(enter);
@@ -504,7 +503,7 @@ int primary_display_save_power_for_idle(int enter, unsigned int need_primary_loc
 				/* DISPMSG("disp_low_power_remove_ovl 2\n"); */
 			} else {
 				if (pgc->session_mode == DISP_SESSION_DECOUPLE_MODE) {
-					DDPMSG("[LP]switch to directlink.\n");
+					DDPDBG("[LP]switch to directlink.\n");
 					_disp_primary_low_power_change_ddp_clock(enter);
 					primary_display_switch_mode_nolock
 					    (DISP_SESSION_DIRECT_LINK_MODE, pgc->session_id, 1);
@@ -570,15 +569,18 @@ static int _disp_primary_path_idle_detect_thread(void *data)
 		_primary_path_unlock(__func__);
 		/* _disp_primary_idle_lock(); */
 		_primary_path_esd_check_lock();
+		_primary_path_lock(__func__);
 		if (((sched_clock() - last_primary_trigger_time) / 1000) > 500 * 1000) {
 
 			DDPDBG("[LP] - enter\n");
 			atomic_set(&isDdp_Idle, 1);
-			primary_display_save_power_for_idle(1, 1);
+			primary_display_save_power_for_idle(1, 0);
+			_primary_path_unlock(__func__);
 			_primary_path_esd_check_unlock();
 		} else {
 			/*DISPMSG("[ddp_idle]_disp_primary_path_idle_detect check time <500ms\n"); */
 			/* _disp_primary_idle_unlock(); */
+			_primary_path_unlock(__func__);
 			_primary_path_esd_check_unlock();
 			continue;
 		}
@@ -957,7 +959,7 @@ int _init_vsync_fake_monitor(int fps)
 	return 0;
 }
 
-#if HDMI_SUB_PATH || HDMI_MAIN_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 #else
 static disp_internal_buffer_info *allocat_decouple_buffer(int size)
 {
@@ -1049,13 +1051,13 @@ static KREE_SECUREMEM_HANDLE allocate_decouple_sec_buffer(unsigned int buffer_si
 	KREE_SECUREMEM_HANDLE mem_handle;
 
 	/* allocate secure buffer by tz api */
-	ret = KREE_AllocSecurechunkmem(primary_display_secure_memory_session_handle(),
-				       &mem_handle, 0, buffer_size);
+	ret = KREE_AllocSecurechunkmemWithTag(primary_display_secure_memory_session_handle(),
+				       &mem_handle, 0, buffer_size, "primary_disp");
 	if (ret != TZ_RESULT_SUCCESS) {
-		DISPERR("KREE_AllocSecurechunkmem fail, ret = %d\n", ret);
+		DISPERR("KREE_AllocSecurechunkmemWithTag fail, ret = %d\n", ret);
 		return -1;
 	}
-	DISPCHECK("KREE_AllocSecurchunkemem handle = 0x%x\n", mem_handle);
+	DISPCHECK("KREE_AllocSecurechunkmemWithTag handle = 0x%x\n", mem_handle);
 
 	return mem_handle;
 }
@@ -1172,20 +1174,18 @@ static int _build_path_direct_link(void)
 	dst_module = _get_dst_module_by_lcm(pgc->plcm);
 	dpmgr_path_set_dst_module(pgc->dpmgr_handle, dst_module);
 #endif
-	DISPMSG("dpmgr set dst module FINISHED(%s)\n", ddp_get_module_name(dst_module));
+	DISPCHECK("dpmgr set dst module FINISHED(%s)\n", ddp_get_module_name(dst_module));
 
 	/* config used module m4u port */
 	config_display_m4u_port(M4U_PORT_DISP_OVL0, DISP_MODULE_OVL0);
 	config_display_m4u_port(M4U_PORT_DISP_RDMA0, DISP_MODULE_RDMA0);
 	config_display_m4u_port(M4U_PORT_DISP_WDMA0, DISP_MODULE_WDMA0);
 
-#if HDMI_MAIN_PATH
-#else
 	/* config m4u port used by hdmi just once */
 	config_display_m4u_port(M4U_PORT_DISP_OVL1, DISP_MODULE_OVL1);
 	config_display_m4u_port(M4U_PORT_DISP_RDMA1, DISP_MODULE_RDMA1);
 	config_display_m4u_port(M4U_PORT_DISP_WDMA1, DISP_MODULE_WDMA1);
-#endif
+
 #if HDMI_MAIN_PATH
 #else
 	dpmgr_set_lcm_utils(pgc->dpmgr_handle, pgc->plcm->drv);
@@ -1631,7 +1631,7 @@ static wait_queue_head_t esd_check_task_wq;	/* For Esd Check Task */
 static atomic_t esd_check_task_wakeup = ATOMIC_INIT(0);	/* For Esd Check Task */
 static wait_queue_head_t esd_ext_te_wq;	/* For Vdo Mode EXT TE Check */
 static atomic_t esd_ext_te_event = ATOMIC_INIT(0);	/* For Vdo Mode EXT TE Check */
-
+static atomic_t esd_check_bycmdq = ATOMIC_INIT(0);
 static int eint_flag;		/* For DCT Setting */
 
 struct task_struct *decouple_fence_release_task = NULL;
@@ -1727,6 +1727,15 @@ int _esd_check_config_handle_cmd(void)
 		ret = 1;
 	return ret;
 }
+void primary_display_esd_cust_bycmdq(int enable)
+{
+	atomic_set(&esd_check_bycmdq, enable);
+}
+
+int primary_display_esd_cust_get(void)
+{
+	return atomic_read(&esd_check_bycmdq);
+}
 
 /* For Vdo Mode Read LCM Check */
 /* Config cmdq_handle_config_esd */
@@ -1737,6 +1746,7 @@ int _esd_check_config_handle_vdo(void)
 	/* 1.reset */
 	cmdqRecReset(pgc->cmdq_handle_config_esd);
 
+	primary_display_esd_cust_bycmdq(1);
 	/* wait stream eof first */
 	if (gEnableMutexRisingEdge == 1)
 		cmdqRecWait(pgc->cmdq_handle_config_esd, CMDQ_EVENT_MUTEX0_STREAM_EOF);
@@ -1773,6 +1783,7 @@ int _esd_check_config_handle_vdo(void)
 /* done: */
 	if (ret)
 		ret = 1;
+	primary_display_esd_cust_bycmdq(0);
 	return ret;
 }
 
@@ -2042,6 +2053,8 @@ static int primary_display_esd_check_worker_kthread(void *data)
 }
 #endif
 
+extern int ddp_dsi_power_on(DISP_MODULE_ENUM module, void *cmdq_handle);
+
 /* ESD RECOVERY */
 static struct platform_device *pregulator;
 int primary_display_esd_recovery(void)
@@ -2091,6 +2104,10 @@ int primary_display_esd_recovery(void)
 
 	DISPCHECK("[ESD]lcm force init[begin]\n");
 	disp_lcm_init(pregulator, pgc->plcm, 1);
+	disp_lcm_suspend(pgc->plcm);
+	disp_lcm_resume_power(pgc->plcm);
+	ddp_dsi_power_on(32, NULL);
+	disp_lcm_resume(pgc->plcm);
 	DISPCHECK("[ESD]lcm force init[end]\n");
 
 	DISPCHECK("[ESD]start dpmgr path[begin]\n");
@@ -2138,8 +2155,6 @@ void primary_display_esd_check_enable(int enable)
 		}
 	}
 }
-#if HDMI_MAIN_PATH
-#else
 static void primary_display_register_eint(void)
 {
 	unsigned long node;
@@ -2171,7 +2186,7 @@ static void primary_display_register_eint(void)
 		DISPCHECK("[ESD][%s] can't find DSI_TE_1 eint compatible node\n", __func__);
 	}
 }
-#endif
+
 /******************************************************************************/
 /* ESD CHECK / RECOVERY ---- End                                              */
 /******************************************************************************/
@@ -2617,6 +2632,8 @@ static int _present_fence_release_worker_thread(void *data)
 				MMProfileLogEx(ddp_mmp_get_events()->present_fence_release,
 					       MMProfileFlagPulse, gPresentFenceIndex,
 					       fence_increment);
+				DDPDBG("RPF/%d/%d\n", gPresentFenceIndex,
+				     gPresentFenceIndex - layer_info->timeline->value);
 			}
 			if (pgc->trigger_cnt > 10)
 				DISPMSG("trigger cnt(%d)\n", pgc->trigger_cnt);
@@ -2882,10 +2899,10 @@ int primary_display_init(struct platform_device *dev, char *lcm_name, unsigned i
 		return -1;
 	}
 #endif
-#if HDMI_SUB_PATH || HDMI_MAIN_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 	DISPMSG("don't allocate primary decouple normal/secure buffer in box!\n");
 #else
-	/* will use decouple mode in idle*/
+	/* will use decouple mode in idle */
 	init_decouple_buffers();
 #endif
 
@@ -2893,7 +2910,7 @@ int primary_display_init(struct platform_device *dev, char *lcm_name, unsigned i
 		_build_path_direct_link();
 		pgc->session_mode = DISP_SESSION_DIRECT_LINK_MODE;
 
-		DISPMSG("primary display is DIRECT LINK MODE\n");
+		DISPCHECK("primary display is DIRECT LINK MODE\n");
 	} else if (primary_display_mode == DECOUPLE_MODE) {
 		_build_path_decouple();
 		pgc->session_mode = DISP_SESSION_DECOUPLE_MODE;
@@ -3068,8 +3085,7 @@ int primary_display_init(struct platform_device *dev, char *lcm_name, unsigned i
 	pgc->state = DISP_ALIVE;
 
 	primary_display_sodi_rule_init();
-#if HDMI_MAIN_PATH
-#else
+
 #ifdef MTK_DISP_IDLE_LP
 	init_waitqueue_head(&idle_detect_wq);
 	primary_display_idle_detect_task =
@@ -3077,8 +3093,8 @@ int primary_display_init(struct platform_device *dev, char *lcm_name, unsigned i
 	disp_update_trigger_time();
 	wake_up_process(primary_display_idle_detect_task);
 #endif
-#endif
-#if HDMI_MAIN_PATH || HDMI_SUB_PATH
+
+#if defined(MTK_ALPS_BOX_SUPPORT)
 #else
 	/* if clock default is on, need enable/disable to close */
 	dpmgr_path_spare_module_clock_off();
@@ -3086,7 +3102,7 @@ int primary_display_init(struct platform_device *dev, char *lcm_name, unsigned i
 
 done:
 	_primary_path_unlock(__func__);
-	DISPMSG("primary_display_init end\n");
+	DISPCHECK("primary_display_init end\n");
 
 	return ret;
 }
@@ -3126,22 +3142,21 @@ int primary_display_wait_for_vsync(void *config)
 {
 	disp_session_vsync_config *c = (disp_session_vsync_config *) config;
 	int ret = 0;
-	unsigned long long ts = 0ULL;
 
 #ifdef MTK_DISP_IDLE_LP
 	_disp_primary_path_dsi_clock_on(0);
 #endif
 
-	ret = dpmgr_wait_event_ts(pgc->dpmgr_handle, DISP_PATH_EVENT_IF_VSYNC, &ts);
+	ret = dpmgr_wait_event(pgc->dpmgr_handle, DISP_PATH_EVENT_IF_VSYNC);
 	if (ret == -2)
 		DISPCHECK("vsync for primary display path not enabled yet\n");
 
 
 	if (pgc->vsync_drop)
-		ret = dpmgr_wait_event_ts(pgc->dpmgr_handle, DISP_PATH_EVENT_IF_VSYNC, &ts);
+		ret = dpmgr_wait_event(pgc->dpmgr_handle, DISP_PATH_EVENT_IF_VSYNC);
 
 	/* DISPMSG("vsync signaled\n"); */
-	c->vsync_ts = ts;
+	c->vsync_ts = ktime_to_ns(ktime_get());
 	c->vsync_cnt++;
 
 #ifdef MTK_DISP_IDLE_LP
@@ -3180,6 +3195,7 @@ int primary_display_suspend(void)
 	primary_display_switch_dst_mode(primary_display_def_dst_mode);
 #endif
 	disp_sw_mutex_lock(&(pgc->capture_lock));
+	_primary_path_esd_check_lock();
 	_primary_path_lock(__func__);
 	if (pgc->state == DISP_SLEPT) {
 		DISPCHECK("primary display path is already sleep, skip\n");
@@ -3198,8 +3214,7 @@ int primary_display_suspend(void)
 		DISPCHECK
 		    ("[POWER]primary display path is busy now, wait frame done, event_ret=%d\n",
 		     event_ret);
-		/* can just ignore the case interrupted by other process */
-		if (event_ret == 0) {
+		if (event_ret <= 0) {
 			DISPERR("wait frame done in suspend timeout\n");
 			MMProfileLogEx(ddp_mmp_get_events()->primary_suspend, MMProfileFlagPulse, 3,
 				       2);
@@ -3258,18 +3273,13 @@ int primary_display_suspend(void)
 	if (_is_decouple_mode(pgc->session_mode))
 		dpmgr_path_power_off(pgc->ovl2mem_path_handle, CMDQ_DISABLE);
 
-#if HDMI_MAIN_PATH
-#else
-	DISPCHECK("[POWER]lcm suspend power[begin]\n");
-	disp_lcm_suspend_power(pgc->plcm);
-	DISPCHECK("[POWER]lcm suspend power[end]\n");
-#endif
 
 	MMProfileLogEx(ddp_mmp_get_events()->primary_suspend, MMProfileFlagPulse, 0, 8);
 
 	pgc->state = DISP_SLEPT;
 done:
 	_primary_path_unlock(__func__);
+	_primary_path_esd_check_unlock();
 	disp_sw_mutex_unlock(&(pgc->capture_lock));
 #ifdef CONFIG_MTK_AEE_POWERKEY_HANG_DETECT
 	aee_kernel_wdt_kick_Powkey_api("mtkfb_early_suspend", WDT_SETBY_Display);
@@ -3298,14 +3308,7 @@ int primary_display_resume(void)
 	}
 	MMProfileLogEx(ddp_mmp_get_events()->primary_resume, MMProfileFlagPulse, 0, 1);
 
-#if HDMI_MAIN_PATH
-#else
-	lcm_param = disp_lcm_get_params(pgc->plcm);
-
-	DISPCHECK("[POWER]lcm resume power[begin]\n");
 	disp_lcm_resume_power(pgc->plcm);
-	DISPCHECK("[POWER]lcm resume power[end]\n");
-#endif
 
 	DISPCHECK("dpmanager path power on[begin]\n");
 	dpmgr_path_power_on(pgc->dpmgr_handle, CMDQ_DISABLE);
@@ -3333,6 +3336,10 @@ int primary_display_resume(void)
 			dpmgr_path_connect(pgc->ovl2mem_path_handle, CMDQ_DISABLE);
 
 		MMProfileLogEx(ddp_mmp_get_events()->primary_resume, MMProfileFlagPulse, 1, 2);
+#if HDMI_MAIN_PATH
+#else
+		lcm_param = disp_lcm_get_params(pgc->plcm);
+#endif
 
 		data_config = dpmgr_path_get_last_config(pgc->dpmgr_handle);
 
@@ -3416,6 +3423,8 @@ int primary_display_resume(void)
 		/* for video mode, we need to force trigger here */
 		/* for cmd mode, just set DPREC_EVENT_CMDQ_SET_EVENT_ALLOW when trigger loop start */
 		dpmgr_path_trigger(pgc->dpmgr_handle, NULL, CMDQ_DISABLE);
+		/* insert a wait token to make sure first config after resume will config to HW when HW idle */
+		_cmdq_insert_wait_frame_done_token();
 	}
 	MMProfileLogEx(ddp_mmp_get_events()->primary_resume, MMProfileFlagPulse, 0, 8);
 
@@ -3433,6 +3442,7 @@ int primary_display_resume(void)
 
 done:
 	_primary_path_unlock(__func__);
+	last_primary_trigger_time = sched_clock();
 	/* primary_display_diagnose(); */
 #ifdef CONFIG_MTK_AEE_POWERKEY_HANG_DETECT
 	aee_kernel_wdt_kick_Powkey_api("mtkfb_late_resume", WDT_SETBY_Display);
@@ -3542,7 +3552,7 @@ static int _ovl_fence_release_callback(uint32_t userdata)
 			/* ovl is not idle !! */
 			DISPERR
 			    ("disp ovl status(0x%x)(0x%x) error!config maybe not finish during blanking\n",
-			     ovl_status[0],ovl_status[1]);
+			     ovl_status[0], ovl_status[1]);
 		#ifdef CONFIG_MTK_AEE_FEATURE
 			aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT, "DDP", "gce late");
 		#endif
@@ -4626,7 +4636,7 @@ int primary_display_switch_mode(int sess_mode, unsigned int session, int force)
 {
 	int ret = 0;
 
-	DISPDBG("primary_display_switch_mode switch mode from %d(%s) to %d(%s)\n",
+	DDPDBG("primary_display_switch_mode switch mode from %d(%s) to %d(%s)\n",
 		pgc->session_mode, session_mode_spy(pgc->session_mode), sess_mode,
 		session_mode_spy(sess_mode));
 
@@ -5409,9 +5419,6 @@ uint32_t DISP_GetScreenHeight(void)
 
 uint32_t DISP_GetActiveHeight(void)
 {
-#if HDMI_MAIN_PATH
-	return primary_display_get_height();
-#else
 	if (pgc->plcm == NULL) {
 		DISPERR("lcm handle is null\n");
 		return 0;
@@ -5422,15 +5429,12 @@ uint32_t DISP_GetActiveHeight(void)
 
 	DISPERR("lcm_params is null!\n");
 	return 0;
-#endif
+
 }
 
 
 uint32_t DISP_GetActiveWidth(void)
 {
-#if HDMI_MAIN_PATH
-	return primary_display_get_width();
-#else
 	if (pgc->plcm == NULL) {
 		DISPERR("lcm handle is null\n");
 		return 0;
@@ -5441,7 +5445,7 @@ uint32_t DISP_GetActiveWidth(void)
 
 	DISPERR("lcm_params is null!\n");
 	return 0;
-#endif
+
 }
 
 LCM_PARAMS *DISP_GetLcmPara(void)
@@ -5492,15 +5496,15 @@ int primary_display_capture_framebuffer_ovl(unsigned long pbuf, unsigned int for
 	disp_sw_mutex_lock(&(pgc->capture_lock));
 
 	if (primary_display_is_sleepd() || !primary_display_cmdq_enabled()) {
+		memset((void *)pbuf, 0, buffer_size);
 		DISPMSG("primary capture: Fail black End\n");
-		/* memset((void *)pbuf, 0, buffer_size); */
 		goto out;
 	}
 
 	if (_is_decouple_mode(pgc->session_mode) || _is_mirror_mode(pgc->session_mode)) {
 		/* primary_display_capture_framebuffer_decouple(pbuf, format); */
+		memset((void *)pbuf, 0, buffer_size);
 		DISPMSG("primary capture: Fail black for decouple & mirror mode End\n");
-		/* memset((void *)pbuf, 0, buffer_size); */
 		goto out;
 	}
 
@@ -6224,6 +6228,42 @@ done:
 #else
 	DISPMSG("[ERROR: primary_display_switch_dst_mode]this function not enable in disp driver\n");
 #endif
+	return ret;
+}
+
+int primary_display_set_panel_param(unsigned int param)
+{
+	int ret = DISP_STATUS_OK;
+
+	DISPFUNC();
+	MMProfileLogEx(ddp_mmp_get_events()->dsi_wrlcm, MMProfileFlagStart, 0, 0);
+#ifdef DISP_SWITCH_DST_MODE
+	_primary_path_switch_dst_lock();
+#endif
+	_primary_path_lock(__func__);
+	if (pgc->state == DISP_SLEPT) {
+		DISPCHECK("Sleep State set display parameter invald\n");
+	} else {
+		if (primary_display_cmdq_enabled()) {
+			if (primary_display_is_video_mode()) {
+				MMProfileLogEx(ddp_mmp_get_events()->dsi_wrlcm,
+					       MMProfileFlagPulse, 0, 7);
+				disp_lcm_set_param(pgc->plcm, param);
+			} else {
+				DISPCHECK("NOT video mode\n");
+				/* _set_backlight_by_cmdq(param); */
+			}
+		} else {
+			DISPCHECK("display cmdq NOT enabled\n");
+			/* _set_backlight_by_cpu(level); */
+		}
+	}
+	_primary_path_unlock(__func__);
+#ifdef DISP_SWITCH_DST_MODE
+	_primary_path_switch_dst_lock();
+#endif
+	MMProfileLogEx(ddp_mmp_get_events()->dsi_wrlcm, MMProfileFlagEnd, 0, 0);
+
 	return ret;
 }
 

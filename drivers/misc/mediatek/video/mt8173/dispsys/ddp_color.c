@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/kernel.h>
@@ -31,48 +31,54 @@ static DISP_PQ_PARAM g_Color_Param[2] = {
 	{
 u4SHPGain:2,
 u4SatGain:4,
+u4PartialY:0,
 u4HueAdj:{9, 9, 9, 9},
 u4SatAdj:{0, 0, 0, 0},
 u4Contrast:4,
 u4Brightness:4,
+u4Ccorr:0
 	 },
 	{
 u4SHPGain:2,
 u4SatGain:4,
+u4PartialY:0,
 u4HueAdj:{9, 9, 9, 9},
 u4SatAdj:{0, 0, 0, 0},
 u4Contrast:4,
-u4Brightness:4}
+u4Brightness:4,
+u4Ccorr:1
+	}
 };
 
 static DISP_PQ_PARAM g_Color_Cam_Param = {
 u4SHPGain:0,
 u4SatGain:4,
+u4PartialY:0,
 u4HueAdj:{9, 9, 9, 9},
 u4SatAdj:{0, 0, 0, 0},
 u4Contrast:4,
-u4Brightness:4
+u4Brightness:4,
+u4Ccorr:2
 };
 
 static DISP_PQ_PARAM g_Color_Gal_Param = {
 u4SHPGain:2,
 u4SatGain:4,
+u4PartialY:0,
 u4HueAdj:{9, 9, 9, 9},
 u4SatAdj:{0, 0, 0, 0},
 u4Contrast:4,
 u4Brightness:4,
-
+u4Ccorr:3
 };
 
 static DISP_PQ_DC_PARAM g_PQ_DC_Param = {
 param:
 	{
 	 1, 1, 0, 0, 0, 0, 0, 0, 0, 0x0A,
-	 0x30, 0x40, 0x06, 0x12, 40, 0x40, 0x80, 0x40, 0x40, 1,
+	 0x30, 5, 0x06, 0x12, 40, 0x40, 0x80, 0x40, 0x40, 1,
 	 0x80, 0x60, 0x80, 0x10, 0x34, 0x40, 0x40, 1, 0x80, 0xa,
-	 0x19, 0x00, 0x20, 0, 0, 1, 2, 1, 80, 1,
-	 0, 0, 0, 0, 0, 0, 0, 0, 20
-	}
+	 0x19, 0x00, 0x20, 0, 0, 1, 2, 1, 80}
 };
 
 /* initialize index (because system default is 0, need fill with 0x80) */
@@ -88,8 +94,19 @@ BRIGHTNESS :
 	{0x400, 0x400, 0x400, 0x400, 0x400, 0x400, 0x400, 0x400, 0x400, 0x400},	/* 0~9 */
 
 PARTIAL_Y :
-	{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-	 0x80},
+	{
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80},
+		{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80}
+	},
+
 
 PURP_TONE_S :
 	{			/* hue 0~10 */
@@ -812,9 +829,35 @@ SKY_TONE_H :
 	 {0x80, 0x80, 0x80},
 	 {0x80, 0x80, 0x80},
 	 {0x80, 0x80, 0x80}
-	 }
+	 },
 
+CCORR_COEF : /* ccorr feature */
+	{
+	 {
+	 {0x400, 0x0, 0x0},
+	 {0x0, 0x400, 0x0},
+	 {0x0, 0x0, 0x400},
+	 },
+	 {
+	 {0x400, 0x0, 0x0},
+	 {0x0, 0x400, 0x0},
+	 {0x0, 0x0, 0x400},
+	 },
+	 {
+	 {0x400, 0x0, 0x0},
+	 {0x0, 0x400, 0x0},
+	 {0x0, 0x0, 0x400},
+	 },
+	 {
+	 {0x400, 0x0, 0x0},
+	 {0x0, 0x400, 0x0},
+	 {0x0, 0x0, 0x400},
+	 },
+	},
 };
+static DEFINE_MUTEX(g_color_reg_lock);
+static DISPLAY_COLOR_REG_T g_color_reg;
+static int g_color_reg_valid;
 
 int color_dbg_en = 1;
 #define COLOR_ERR(fmt, arg...) DDPERR("[COLOR] " fmt "\n", ##arg)
@@ -825,12 +868,11 @@ int color_dbg_en = 1;
 static ddp_module_notify g_color_cb;
 
 static DISPLAY_TDSHP_T g_TDSHP_Index;
-static DISPLAY_DC_T g_DC_Index;
 
 static unsigned int g_split_en;
 static unsigned int g_split_window_x = 0xFFFF0000;
 static unsigned int g_split_window_y = 0xFFFF0000;
-static unsigned long g_color_window = 0x4010605A;
+static unsigned long g_color_window = 0x40106051;
 static unsigned long g_color0_dst_w;
 static unsigned long g_color0_dst_h;
 static unsigned long g_color1_dst_w;
@@ -873,7 +915,7 @@ DISP_PQ_PARAM *get_Color_Gal_config(void)
 *g_Color_Index
 */
 
-DISPLAY_PQ_T *get_Color_index()
+DISPLAY_PQ_T *get_Color_index(void)
 {
 	return &g_Color_Index;
 }
@@ -882,11 +924,6 @@ DISPLAY_PQ_T *get_Color_index()
 DISPLAY_TDSHP_T *get_TDSHP_index(void)
 {
 	return &g_TDSHP_Index;
-}
-
-DISPLAY_DC_T *get_DC_index(void)
-{
-	return &g_DC_Index;
 }
 
 void DpEngine_COLORonInit(DISP_MODULE_ENUM module, void *__cmdq)
@@ -910,7 +947,7 @@ void DpEngine_COLORonInit(DISP_MODULE_ENUM module, void *__cmdq)
 
 	COLOR_DBG("DpEngine_COLORonInit(), en[%d],  x[0x%x], y[0x%x]\n", g_split_en,
 		  g_split_window_x, g_split_window_y);
-	DISP_REG_SET(cmdq, DISP_COLOR_DBG_CFG_MAIN + offset, g_split_en << 3);
+	DISP_REG_SET(cmdq, DISP_COLOR_DBG_CFG_MAIN + offset, (g_split_en << 3));
 	DISP_REG_SET(cmdq, DISP_COLOR_WIN_X_MAIN + offset, g_split_window_x);
 	DISP_REG_SET(cmdq, DISP_COLOR_WIN_Y_MAIN + offset, g_split_window_y);
 
@@ -1037,7 +1074,7 @@ void DpEngine_COLORonConfig(DISP_MODULE_ENUM module, unsigned int srcWidth, unsi
 		pq_param_p = &g_Color_Param[COLOR_ID_1];
 	}
 
-	if (pq_param_p->u4SatGain >= COLOR_TUNING_INDEX ||
+	if ((pq_param_p->u4SatGain >= COLOR_TUNING_INDEX && pq_param_p->u4SatGain != 0xffff) ||
 	    pq_param_p->u4HueAdj[PURP_TONE] >= COLOR_TUNING_INDEX ||
 	    pq_param_p->u4HueAdj[SKIN_TONE] >= COLOR_TUNING_INDEX ||
 	    pq_param_p->u4HueAdj[GRASS_TONE] >= COLOR_TUNING_INDEX ||
@@ -1064,6 +1101,11 @@ void DpEngine_COLORonConfig(DISP_MODULE_ENUM module, unsigned int srcWidth, unsi
 	DISP_REG_SET(cmdq, DISP_COLOR_G_PIC_ADJ_MAIN_1 + offset,
 		     (g_Color_Index.BRIGHTNESS[pq_param_p->u4Brightness] << 16) | g_Color_Index.
 		     CONTRAST[pq_param_p->u4Contrast]);
+
+	if (pq_param_p->u4SatGain == 0xffff)
+		DISP_REG_SET(cmdq, DISP_COLOR_G_PIC_ADJ_MAIN_2 + offset,
+					 (0x200 << 16) | 0);
+	else
 	DISP_REG_SET(cmdq, DISP_COLOR_G_PIC_ADJ_MAIN_2 + offset,
 		     (0x200 << 16) | g_Color_Index.GLOBAL_SAT[pq_param_p->u4SatGain]);
 
@@ -1071,8 +1113,8 @@ void DpEngine_COLORonConfig(DISP_MODULE_ENUM module, unsigned int srcWidth, unsi
 	/* Partial Y Function */
 	for (index = 0; index < 8; index++) {
 		DISP_REG_SET(cmdq, DISP_COLOR_Y_SLOPE_1_0_MAIN + 4 * index + offset,
-			     (g_Color_Index.PARTIAL_Y[2 * index] | g_Color_Index.
-			      PARTIAL_Y[2 * index + 1] << 16));
+			(g_Color_Index.PARTIAL_Y[pq_param_p->u4PartialY][2 * index] |
+			g_Color_Index.PARTIAL_Y[pq_param_p->u4PartialY][2 * index + 1] << 16));
 	}
 
 
@@ -1240,6 +1282,208 @@ void DpEngine_COLORonConfig(DISP_MODULE_ENUM module, unsigned int srcWidth, unsi
 	DISP_REG_SET(cmdq, DISP_COLOR_TWO_D_WINDOW_1 + offset, g_color_window);
 }
 
+static void color_write_hw_reg(DISP_MODULE_ENUM module,
+	const DISPLAY_COLOR_REG_T *color_reg, void *cmdq)
+{
+	int offset = C0_OFFSET;
+	int index;
+	unsigned char h_series[20] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned int u4Temp = 0;
+
+	if (DISP_MODULE_COLOR1 == module)
+		offset = C1_OFFSET;
+
+	if (g_color_bypass == 0) {
+		DISP_REG_SET(cmdq, DISP_COLOR_CFG_MAIN + offset, (1 << 8));	/* enable wide_gamut */
+		DISP_REG_SET(cmdq, DISP_COLOR_START + offset, 0x00000001);	/* color start */
+		/* enable R2Y/Y2R in Color Wrapper */
+		DISP_REG_SET(cmdq, DISP_COLOR_CM1_EN + offset, 0x01);
+		DISP_REG_SET(cmdq, DISP_COLOR_CM2_EN + offset, 0x11); /* also set no rounding on Y2R */
+	} else {
+		DISP_REG_SET_FIELD(cmdq, CFG_MAIN_FLD_COLOR_DBUF_EN, DISP_COLOR_CFG_MAIN + offset,
+					 0x1);
+		DISP_REG_SET_FIELD(cmdq, START_FLD_DISP_COLOR_START, DISP_COLOR_START + offset,
+					 0x1);
+	}
+
+	/* for partial Y contour issue */
+	DISP_REG_MASK(cmdq, DISP_COLOR_LUMA_ADJ + offset, 0x0, 0x0000007F);
+
+
+	DISP_REG_SET(cmdq, DISP_COLOR_G_PIC_ADJ_MAIN_1 + offset,
+		(color_reg->BRIGHTNESS << 16) | color_reg->CONTRAST);
+	if (color_reg->GLOBAL_SAT == 0xffff)
+		DISP_REG_SET(cmdq, DISP_COLOR_G_PIC_ADJ_MAIN_2 + offset,
+				(0x200 << 16) | 0);
+	else
+	DISP_REG_SET(cmdq, DISP_COLOR_G_PIC_ADJ_MAIN_2 + offset,
+		(0x200 << 16) | color_reg->GLOBAL_SAT);
+
+
+	/* Partial Y Function */
+	for (index = 0; index < 8; index++) {
+		DISP_REG_SET(cmdq, DISP_COLOR_Y_SLOPE_1_0_MAIN + 4 * index + offset,
+			(color_reg->PARTIAL_Y[2 * index] |
+			(color_reg->PARTIAL_Y[2 * index + 1] << 16)));
+	}
+
+
+	/* Partial Saturation Function */
+
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN1_0 + offset,
+		(color_reg->PURP_TONE_S[SG1][0]) |
+		(color_reg->PURP_TONE_S[SG1][1] << 8) |
+		(color_reg->PURP_TONE_S[SG1][2] << 16) |
+		(color_reg->SKIN_TONE_S[SG1][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN1_1 + offset,
+		(color_reg->SKIN_TONE_S[SG1][1]) |
+		(color_reg->SKIN_TONE_S[SG1][2] << 8) |
+		(color_reg->SKIN_TONE_S[SG1][3] << 16) |
+		(color_reg->SKIN_TONE_S[SG1][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN1_2 + offset,
+		(color_reg->SKIN_TONE_S[SG1][5]) |
+		(color_reg->SKIN_TONE_S[SG1][6] << 8) |
+		(color_reg->SKIN_TONE_S[SG1][7] << 16) |
+		(color_reg->GRASS_TONE_S[SG1][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN1_3 + offset,
+		(color_reg->GRASS_TONE_S[SG1][1]) |
+		(color_reg->GRASS_TONE_S[SG1][2] << 8) |
+		(color_reg->GRASS_TONE_S[SG1][3] << 16) |
+		(color_reg->GRASS_TONE_S[SG1][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN1_4 + offset,
+		(color_reg->GRASS_TONE_S[SG1][5]) |
+		(color_reg->SKY_TONE_S[SG1][0] << 8) |
+		(color_reg->SKY_TONE_S[SG1][1] << 16) |
+		(color_reg->SKY_TONE_S[SG1][2] << 24));
+
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN2_0 + offset,
+		(color_reg->PURP_TONE_S[SG2][0]) |
+		(color_reg->PURP_TONE_S[SG2][1] << 8) |
+		(color_reg->PURP_TONE_S[SG2][2] << 16) |
+		(color_reg->SKIN_TONE_S[SG2][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN2_1 + offset,
+		(color_reg->SKIN_TONE_S[SG2][1]) |
+		(color_reg->SKIN_TONE_S[SG2][2] << 8) |
+		(color_reg->SKIN_TONE_S[SG2][3] << 16) |
+		(color_reg->SKIN_TONE_S[SG2][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN2_2 + offset,
+		(color_reg->SKIN_TONE_S[SG2][5]) |
+		(color_reg->SKIN_TONE_S[SG2][6] << 8) |
+		(color_reg->SKIN_TONE_S[SG2][7] << 16) |
+		(color_reg->GRASS_TONE_S[SG2][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN2_3 + offset,
+		(color_reg->GRASS_TONE_S[SG2][1]) |
+		(color_reg->GRASS_TONE_S[SG2][2] << 8) |
+		(color_reg->GRASS_TONE_S[SG2][3] << 16) |
+		(color_reg->GRASS_TONE_S[SG2][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN2_4 + offset,
+		(color_reg->GRASS_TONE_S[SG2][5]) |
+		(color_reg->SKY_TONE_S[SG2][0] << 8) |
+		(color_reg->SKY_TONE_S[SG2][1] << 16) |
+		(color_reg->SKY_TONE_S[SG2][2] << 24));
+
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN3_0 + offset,
+		(color_reg->PURP_TONE_S[SG3][0]) |
+		(color_reg->PURP_TONE_S[SG3][1] << 8) |
+		(color_reg->PURP_TONE_S[SG3][2] << 16) |
+		(color_reg->SKIN_TONE_S[SG3][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN3_1 + offset,
+		(color_reg->SKIN_TONE_S[SG3][1]) |
+		(color_reg->SKIN_TONE_S[SG3][2] << 8) |
+		(color_reg->SKIN_TONE_S[SG3][3] << 16) |
+		(color_reg->SKIN_TONE_S[SG3][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN3_2 + offset,
+		(color_reg->SKIN_TONE_S[SG3][5]) |
+		(color_reg->SKIN_TONE_S[SG3][6] << 8) |
+		(color_reg->SKIN_TONE_S[SG3][7] << 16) |
+		(color_reg->GRASS_TONE_S[SG3][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN3_3 + offset,
+		(color_reg->GRASS_TONE_S[SG3][1]) |
+		(color_reg->GRASS_TONE_S[SG3][2] << 8) |
+		(color_reg->GRASS_TONE_S[SG3][3] << 16) |
+		(color_reg->GRASS_TONE_S[SG3][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_GAIN3_4 + offset,
+		(color_reg->GRASS_TONE_S[SG3][5]) |
+		(color_reg->SKY_TONE_S[SG3][0] << 8) |
+		(color_reg->SKY_TONE_S[SG3][1] << 16) |
+		(color_reg->SKY_TONE_S[SG3][2] << 24));
+
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT1_0 + offset,
+		(color_reg->PURP_TONE_S[SP1][0]) |
+		(color_reg->PURP_TONE_S[SP1][1] << 8) |
+		(color_reg->PURP_TONE_S[SP1][2] << 16) |
+		(color_reg->SKIN_TONE_S[SP1][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT1_1 + offset,
+		(color_reg->SKIN_TONE_S[SP1][1]) |
+		(color_reg->SKIN_TONE_S[SP1][2] << 8) |
+		(color_reg->SKIN_TONE_S[SP1][3] << 16) |
+		(color_reg->SKIN_TONE_S[SP1][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT1_2 + offset,
+		(color_reg->SKIN_TONE_S[SP1][5]) |
+		(color_reg->SKIN_TONE_S[SP1][6] << 8) |
+		(color_reg->SKIN_TONE_S[SP1][7] << 16) |
+		(color_reg->GRASS_TONE_S[SP1][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT1_3 + offset,
+		(color_reg->GRASS_TONE_S[SP1][1]) |
+		(color_reg->GRASS_TONE_S[SP1][2] << 8) |
+		(color_reg->GRASS_TONE_S[SP1][3] << 16) |
+		(color_reg->GRASS_TONE_S[SP1][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT1_4 + offset,
+		(color_reg->GRASS_TONE_S[SP1][5]) |
+		(color_reg->SKY_TONE_S[SP1][0] << 8) |
+		(color_reg->SKY_TONE_S[SP1][1] << 16) |
+		(color_reg->SKY_TONE_S[SP1][2] << 24));
+
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT2_0 + offset,
+		(color_reg->PURP_TONE_S[SP2][0]) |
+		(color_reg->PURP_TONE_S[SP2][1] << 8) |
+		(color_reg->PURP_TONE_S[SP2][2] << 16) |
+		(color_reg->SKIN_TONE_S[SP2][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT2_1 + offset,
+		(color_reg->SKIN_TONE_S[SP2][1]) |
+		(color_reg->SKIN_TONE_S[SP2][2] << 8) |
+		(color_reg->SKIN_TONE_S[SP2][3] << 16) |
+		(color_reg->SKIN_TONE_S[SP2][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT2_2 + offset,
+		(color_reg->SKIN_TONE_S[SP2][5]) |
+		(color_reg->SKIN_TONE_S[SP2][6] << 8) |
+		(color_reg->SKIN_TONE_S[SP2][7] << 16) |
+		(color_reg->GRASS_TONE_S[SP2][0] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT2_3 + offset,
+		(color_reg->GRASS_TONE_S[SP2][1]) |
+		(color_reg->GRASS_TONE_S[SP2][2] << 8) |
+		(color_reg->GRASS_TONE_S[SP2][3] << 16) |
+		(color_reg->GRASS_TONE_S[SP2][4] << 24));
+	DISP_REG_SET(cmdq, DISP_COLOR_PART_SAT_POINT2_4 + offset,
+		(color_reg->GRASS_TONE_S[SP2][5]) |
+		(color_reg->SKY_TONE_S[SP2][0] << 8) |
+		(color_reg->SKY_TONE_S[SP2][1] << 16) |
+		(color_reg->SKY_TONE_S[SP2][2] << 24));
+
+	for (index = 0; index < 3; index++)
+		h_series[index + PURP_TONE_START] = color_reg->PURP_TONE_H[index];
+
+	for (index = 0; index < 8; index++)
+		h_series[index + SKIN_TONE_START] = color_reg->SKIN_TONE_H[index];
+
+	for (index = 0; index < 6; index++)
+		h_series[index + GRASS_TONE_START] = color_reg->GRASS_TONE_H[index];
+
+	for (index = 0; index < 3; index++)
+		h_series[index + SKY_TONE_START] = color_reg->SKY_TONE_H[index];
+
+	for (index = 0; index < 5; index++) {
+		u4Temp = (h_series[4 * index]) |
+		    (h_series[4 * index + 1] << 8) |
+		    (h_series[4 * index + 2] << 16) |
+		    (h_series[4 * index + 3] << 24);
+		DISP_REG_SET(cmdq, DISP_COLOR_LOCAL_HUE_CD_0 + offset + 4 * index, u4Temp);
+	}
+
+
+	/* color window */
+	DISP_REG_SET(cmdq, DISP_COLOR_TWO_D_WINDOW_1 + offset, g_color_window);
+}
 
 static void color_trigger_refresh(DISP_MODULE_ENUM module)
 {
@@ -1293,7 +1537,7 @@ static unsigned int color_read_sw_reg(unsigned int reg_id)
 {
 	unsigned int ret = 0;
 
-	if (reg_id >= SWREG_PQDC_BLACK_EFFECT_ENABLE && reg_id <= SWREG_PQDC_BINOMIAL_TAR_RANGE) {
+	if (reg_id >= SWREG_PQDC_BLACK_EFFECT_ENABLE && reg_id <= SWREG_PQDC_PROTECT_REGION_WEIGHT) {
 		ret = (unsigned int)g_PQ_DC_Param.param[reg_id - SWREG_PQDC_BLACK_EFFECT_ENABLE];
 		return ret;
 	}
@@ -1321,7 +1565,7 @@ static unsigned int color_read_sw_reg(unsigned int reg_id)
 
 static void color_write_sw_reg(unsigned int reg_id, unsigned int value)
 {
-	if (reg_id >= SWREG_PQDC_BLACK_EFFECT_ENABLE && reg_id <= SWREG_PQDC_BINOMIAL_TAR_RANGE) {
+	if (reg_id >= SWREG_PQDC_BLACK_EFFECT_ENABLE && reg_id <= SWREG_PQDC_PROTECT_REGION_WEIGHT) {
 		g_PQ_DC_Param.param[reg_id - SWREG_PQDC_BLACK_EFFECT_ENABLE] = (int)value;
 		return;
 	}
@@ -1414,7 +1658,17 @@ static int _color_config(DISP_MODULE_ENUM module, disp_ddp_path_config *pConfig,
 	}
 
 	DpEngine_COLORonInit(module, cmq_handle);
-	DpEngine_COLORonConfig(module, pConfig->dst_w, pConfig->dst_h, cmq_handle);
+	if (g_color_reg_valid) {
+		COLOR_DBG("color_config : color_write_hw_reg\n");
+		mutex_lock(&g_color_reg_lock);
+		DISP_REG_SET(cmq_handle, DISP_COLOR_INTERNAL_IP_WIDTH, pConfig->dst_w);
+		DISP_REG_SET(cmq_handle, DISP_COLOR_INTERNAL_IP_HEIGHT, pConfig->dst_h);
+		color_write_hw_reg(DISP_MODULE_COLOR0, &g_color_reg, cmq_handle);
+		mutex_unlock(&g_color_reg_lock);
+	} else {
+		COLOR_DBG("color_config : DpEngine_COLORonConfig\n");
+		DpEngine_COLORonConfig(module, pConfig->dst_w, pConfig->dst_h, cmq_handle);
+	}
 
 #ifdef CONFIG_FPGA_EARLY_PORTING
 	ddp_color_bypass_color(module, 1, NULL);
@@ -1436,7 +1690,6 @@ static int _color_io(DISP_MODULE_ENUM module, int msg, unsigned long arg, void *
 	DISP_PQ_PARAM *pq_param;
 	DISPLAY_PQ_T *pq_index;
 	DISPLAY_TDSHP_T *tdshp_index;
-	DISPLAY_DC_T *dc_index;
 
 	COLOR_DBG("_color_io: msg %x\n", msg);
 
@@ -1521,6 +1774,34 @@ static int _color_io(DISP_MODULE_ENUM module, int msg, unsigned long arg, void *
 
 		break;
 
+	case DISP_IOCTL_GET_PQINDEX:
+
+		pq_index = get_Color_index();
+		if (copy_to_user((void *)arg, pq_index, sizeof(DISPLAY_PQ_T))) {
+			COLOR_ERR("DISP_IOCTL_GET_PQPARAM Copy to user failed\n");
+			return -EFAULT;
+		}
+
+		break;
+
+	case DISP_IOCTL_SET_COLOR_REG:
+		COLOR_DBG("DISP_IOCTL_SET_COLOR_REG\n");
+
+		mutex_lock(&g_color_reg_lock);
+		if (copy_from_user(&g_color_reg, (void *)arg, sizeof(DISPLAY_COLOR_REG_T))) {
+			mutex_unlock(&g_color_reg_lock);
+			COLOR_ERR("DISP_IOCTL_SET_COLOR_REG Copy from user failed\n");
+			return -EFAULT;
+		}
+
+		color_write_hw_reg(DISP_MODULE_COLOR0, &g_color_reg, cmdq);
+		g_color_reg_valid = 1;
+		mutex_unlock(&g_color_reg_lock);
+
+		color_trigger_refresh(DISP_MODULE_COLOR0);
+
+		break;
+
 	case DISP_IOCTL_SET_TDSHPINDEX:
 
 		tdshp_index = get_TDSHP_index();
@@ -1536,29 +1817,6 @@ static int _color_io(DISP_MODULE_ENUM module, int msg, unsigned long arg, void *
 		tdshp_index = get_TDSHP_index();
 		if (copy_to_user((void *)arg, tdshp_index, sizeof(DISPLAY_TDSHP_T))) {
 			COLOR_ERR("DISP_IOCTL_GET_TDSHPINDEX Copy to user failed\n");
-			return -EFAULT;
-		}
-
-		break;
-
-
-	case DISP_IOCTL_SET_DCINDEX:
-
-		COLOR_DBG("DISP_IOCTL_SET_DCINDEX!\n");
-
-		dc_index = get_DC_index();
-		if (copy_from_user(dc_index, (void *)arg, sizeof(DISPLAY_DC_T))) {
-			COLOR_ERR("DISP_IOCTL_SET_DCINDEX Copy from user failed\n");
-			return -EFAULT;
-		}
-
-		break;
-
-	case DISP_IOCTL_GET_DCINDEX:
-
-		dc_index = get_DC_index();
-		if (copy_to_user((void *)arg, dc_index, sizeof(DISPLAY_DC_T))) {
-			COLOR_ERR("DISP_IOCTL_GET_DCINDEX Copy to user failed\n");
 			return -EFAULT;
 		}
 
@@ -1898,110 +2156,3 @@ DDP_MODULE_DRIVER ddp_driver_color = {
 	.set_listener = _color_set_listener,
 	.cmd = _color_io,
 };
-
-void color_test(const char *cmd, char *debug_output)
-{
-	DISP_MODULE_ENUM color_id;
-	unsigned int value;
-	int ret;
-	int offset = C0_OFFSET;
-
-	debug_output[0] = '\0';
-	COLOR_DBG("[COLOR_DEBUG] color_test:%s", cmd);
-
-	if (strncmp(cmd, "C0:", 3) == 0) {
-		color_id = DISP_MODULE_COLOR0;
-	} else if (strncmp(cmd, "C1:", 3) == 0) {
-		color_id = DISP_MODULE_COLOR1;
-	} else {
-		memcpy(debug_output, "Wrong COLOR ID\n", 15);
-		return;
-	}
-	cmd += 3;
-
-	if (DISP_MODULE_COLOR1 == color_id)
-		offset = C1_OFFSET;
-
-	if (strncmp(cmd, "en:", 3) == 0) {
-		int bypass;
-
-		cmd += 3;
-
-		if (cmd[0] - '0' > 1 && cmd[0] - '0' < 0) {
-			memcpy(debug_output, "cmd param error\n", 16);
-			return;
-		}
-		bypass = 1 - (cmd[0] - '0');
-#if 1
-		_color_bypass(color_id, bypass);
-#else
-		ddp_color_bypass_color(color_id, bypass, NULL);
-#endif
-		goto COMMAND_SUCCESS;
-	} else if (strncmp(cmd, "brightness:", 11) == 0) {
-		cmd += 11;
-		ret = kstrtouint(cmd, 0, (unsigned int *)&value);
-		if (ret != 0)
-			goto STRTOUINT_ERROR;
-		COLOR_DBG("[COLOR_DEBUG] value:%d", value);
-
-		DISP_REG_MASK(NULL, DISP_COLOR_G_PIC_ADJ_MAIN_1 + offset, value << 16, 0x7ff << 16);
-
-		ret = DISP_REG_GET(DISP_COLOR_G_PIC_ADJ_MAIN_1 + offset);
-		if (((ret >> 16) & 0x7ff) != value)
-			goto REG_VALUE_NOT_MATCH;
-		goto COMMAND_SUCCESS;
-	} else if (strncmp(cmd, "contrast:", 9) == 0) {
-		cmd += 9;
-		ret = kstrtouint(cmd, 0, (unsigned int *)&value);
-		if (ret != 0)
-			goto STRTOUINT_ERROR;
-		COLOR_DBG("[COLOR_DEBUG] value:%d", value);
-
-		DISP_REG_MASK(NULL, DISP_COLOR_G_PIC_ADJ_MAIN_1 + offset, value, 0x3ff);
-
-		ret = DISP_REG_GET(DISP_COLOR_G_PIC_ADJ_MAIN_1 + offset);
-		if ((ret & 0x3ff) != value)
-			goto REG_VALUE_NOT_MATCH;
-		goto COMMAND_SUCCESS;
-	} else if (strncmp(cmd, "saturation:", 11) == 0) {
-		cmd += 11;
-		ret = kstrtouint(cmd, 0, (unsigned int *)&value);
-		if (ret != 0)
-			goto STRTOUINT_ERROR;
-		COLOR_DBG("[COLOR_DEBUG] value:%d", value);
-
-		DISP_REG_MASK(NULL, DISP_COLOR_G_PIC_ADJ_MAIN_2 + offset, value, 0x3ff);
-
-		ret = DISP_REG_GET(DISP_COLOR_G_PIC_ADJ_MAIN_2 + offset);
-		if ((ret & 0x3ff) != value)
-			goto REG_VALUE_NOT_MATCH;
-		goto COMMAND_SUCCESS;
-	} else if (strncmp(cmd, "query_status", 12) == 0) {
-		int bypass = 0;
-
-		ret = DISP_REG_GET(DISP_COLOR_CFG_MAIN + offset);
-		if (ret & 0x9f) {
-			bypass = 1;
-			sprintf(debug_output, "bypass status:\n    DISP_COLOR_CFG_MAIN: %x\n", ret);
-		} else {
-			bypass = 0;
-			memcpy(debug_output, "bypass status: Not bypass\n", 26);
-		}
-	} else {
-		memcpy(debug_output, "Command not support\n", 20);
-	}
-
-	return;
-
-COMMAND_SUCCESS:
-	memcpy(debug_output, "success\n", 8);
-	return;
-
-REG_VALUE_NOT_MATCH:
-	memcpy(debug_output, "reg value not match\n", 20);
-	return;
-
-STRTOUINT_ERROR:
-	memcpy(debug_output, "kstrtouint fail\n", 16);
-}

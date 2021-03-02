@@ -1,14 +1,15 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/slab.h>
@@ -713,28 +714,6 @@ int disp_lcm_esd_recover(disp_lcm_handle *plcm)
 	return -1;
 }
 
-/* 0ms < T8 < 20ms, T8: latency between MIPI path power off and VDD off
- * Separate lcm VDD off from suspend procedure and would be called after
- * MIPI path power off */
-int disp_lcm_suspend_power(disp_lcm_handle *plcm)
-{
-	/*DISPFUNC(); */
-	LCM_DRIVER *lcm_drv = NULL;
-
-	DISPFUNC();
-
-	if (_is_lcm_inited(plcm)) {
-		lcm_drv = plcm->drv;
-
-		if (lcm_drv->suspend_power)
-			lcm_drv->suspend_power();
-
-		return 0;
-	}
-	DISPERR("lcm_drv is null\n");
-	return -1;
-}
-
 int disp_lcm_suspend(disp_lcm_handle *plcm)
 {
 	/*DISPFUNC(); */
@@ -751,19 +730,21 @@ int disp_lcm_suspend(disp_lcm_handle *plcm)
 			return -1;
 		}
 
+		if (lcm_drv->suspend_power)
+			lcm_drv->suspend_power();
+
+
 		return 0;
 	}
 	DISPERR("lcm_drv is null\n");
 	return -1;
 }
 
-/* 1ms < T2 < 20ms, T2: latency between LCM reset and MIPI path power on
- * Separate lcm VDD on and reset from resume procedure and it would be
- * called before MIPI path power on */
 int disp_lcm_resume_power(disp_lcm_handle *plcm)
 {
 	/*DISPFUNC(); */
 	LCM_DRIVER *lcm_drv = NULL;
+	int ret = 0;
 
 	DISPFUNC();
 
@@ -773,10 +754,12 @@ int disp_lcm_resume_power(disp_lcm_handle *plcm)
 		if (lcm_drv->resume_power)
 			lcm_drv->resume_power();
 
-		return 0;
+	} else {
+		ret = -1;
+		DISPERR("lcm_drv is null\n");
 	}
-	DISPERR("lcm_drv is null\n");
-	return -1;
+
+	return ret;
 }
 
 int disp_lcm_resume(disp_lcm_handle *plcm)
@@ -788,6 +771,11 @@ int disp_lcm_resume(disp_lcm_handle *plcm)
 
 	if (_is_lcm_inited(plcm)) {
 		lcm_drv = plcm->drv;
+
+		/*
+		if (lcm_drv->resume_power)
+			lcm_drv->resume_power();
+		*/
 
 		if (lcm_drv->resume) {
 			lcm_drv->resume();
@@ -955,4 +943,29 @@ int disp_lcm_is_video_mode(disp_lcm_handle *plcm)
 	}
 
 	ASSERT(0);
+}
+
+int disp_lcm_set_param(disp_lcm_handle *plcm, unsigned int param)
+{
+	/*DISPFUNC(); */
+	LCM_DRIVER *lcm_drv = NULL;
+	int ret = 0;
+
+	DISPFUNC();
+
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->set_disp_param) {
+			lcm_drv->set_disp_param(param);
+			ret = 0;
+		} else {
+			DISPERR("FATAL ERROR, lcm_drv->set_backlight is null\n");
+			ret = -1;
+		}
+	} else {
+		DISPERR("lcm_drv is null\n");
+		ret = -1;
+	}
+
+	return ret;
 }

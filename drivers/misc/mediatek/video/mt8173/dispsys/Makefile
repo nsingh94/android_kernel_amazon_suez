@@ -1,14 +1,27 @@
+#
+# Copyright (C) 2015 MediaTek Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 2 as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+
 # drivers/dispsys
 
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/video/$(MTK_PLATFORM)/videox/ \
              -I$(srctree)/drivers/misc/mediatek/ext_disp/$(MTK_PLATFORM) \
-             -I$(srctree)/drivers/misc/mediatek/cmdq/hv1/$(MTK_PLATFORM)/ \
-             -I$(srctree)/drivers/misc/mediatek/cmdq/hv1/ \
+             -I$(srctree)/drivers/misc/mediatek/cmdq/v2/$(MTK_PLATFORM)/ \
+             -I$(srctree)/drivers/misc/mediatek/cmdq/v2/ \
              -I$(srctree)/drivers/misc/mediatek/cmdq/ \
              -I$(srctree)/drivers/misc/mediatek/m4u/$(MTK_PLATFORM)/ \
              -I$(srctree)/drivers/misc/mediatek/lcm/inc \
-             -I$(srctree)/drivers/misc/mediatek/leds/ \
-             -I$(srctree)/drivers/misc/mediatek/leds/mt8173/
+             -I$(srctree)/drivers/misc/mediatek/leds/$(MTK_PLATFORM)/ \
+             -I$(srctree)/drivers/misc/mediatek/leds/
 ifeq ($(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT),y)
 #cmdq driver header need followings for secure case
 ccflags-y += -I$(srctree)/include

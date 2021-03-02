@@ -1,14 +1,23 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * File: drivers/video/omap_new/debug.c
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Debug support for the omapfb driver
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (C) 2004 Nokia Corporation
+ * Author: Imre Deak <imre.deak@nokia.com>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program.
  */
 
 #ifndef __FBCONFIG_KDEBUG_H
@@ -90,10 +99,10 @@ typedef struct PM_LAYER_EN {
 } PM_LAYER_EN;
 
 typedef struct PM_LAYER_INFO {
-	unsigned int index;
-	unsigned int height;
-	unsigned int width;
-	unsigned int fmt;
+	int index;
+	int height;
+	int width;
+	int fmt;
 	unsigned int layer_size;
 } PM_LAYER_INFO;
 

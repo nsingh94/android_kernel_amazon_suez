@@ -1,14 +1,15 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 
@@ -19,7 +20,7 @@
 #include "ddp_aal.h"
 #include "ddp_gamma.h"
 #include "disp_event.h"
-#include "../videox/DpDataType.h"
+/*#include "../videox/DpDataType.h"*/
 
 
 typedef struct {
@@ -55,7 +56,7 @@ typedef struct {
 	int layer;
 
 	unsigned long addr;
-	DpColorFormat fmt;
+	unsigned int fmt;
 
 	int x;
 	int y;
@@ -68,14 +69,13 @@ typedef struct {
 #define COLOR_TUNING_INDEX 19
 #define THSHP_TUNING_INDEX 12
 #define THSHP_PARAM_MAX 83
-#define DC_TUNING_INDEX 11
-#define DC_PARAM_MAX 49
+#define PARTIAL_Y_INDEX 10
 
 
 #define GLOBAL_SAT_SIZE 10
 #define CONTRAST_SIZE 10
 #define BRIGHTNESS_SIZE 10
-#define PARTIAL_Y_SIZE 28
+#define PARTIAL_Y_SIZE 16
 #define PQ_HUE_ADJ_PHASE_CNT 4
 #define PQ_SAT_ADJ_PHASE_CNT 4
 #define PQ_PARTIALS_CONTROL 5
@@ -83,14 +83,24 @@ typedef struct {
 #define SKIN_TONE_SIZE 8	/* (-6) */
 #define GRASS_TONE_SIZE 6	/* (-2) */
 #define SKY_TONE_SIZE 3
+#define CCORR_COEF_CNT 4 /* ccorr feature */
+
+enum TONE_ENUM {
+	PURP_TONE = 0,
+	SKIN_TONE = 1,
+	GRASS_TONE = 2,
+	SKY_TONE = 3
+};
 
 typedef struct {
 	unsigned int u4SHPGain;	/* 0 : min , 9 : max. */
 	unsigned int u4SatGain;	/* 0 : min , 9 : max. */
+	unsigned int u4PartialY;   /* 0 : min , 9 : max. */
 	unsigned int u4HueAdj[PQ_HUE_ADJ_PHASE_CNT];
 	unsigned int u4SatAdj[PQ_SAT_ADJ_PHASE_CNT];
 	unsigned int u4Contrast;	/* 0 : min , 9 : max. */
 	unsigned int u4Brightness;	/* 0 : min , 9 : max. */
+	unsigned int u4Ccorr;      /* 0 : min , 3 : max. ccorr feature */
 } DISP_PQ_PARAM;
 
 typedef struct {
@@ -102,33 +112,49 @@ typedef struct {
 } DISP_PQ_WIN_PARAM;
 
 typedef struct {
+	int image;
+	int video;
+	int camera;
+} DISP_PQ_MAPPING_PARAM;
 
-	unsigned char GLOBAL_SAT[GLOBAL_SAT_SIZE];
-	unsigned char CONTRAST[CONTRAST_SIZE];
-	unsigned short BRIGHTNESS[BRIGHTNESS_SIZE];
-	unsigned char PARTIAL_Y[PARTIAL_Y_SIZE];
-	unsigned char PURP_TONE_S[COLOR_TUNING_INDEX][PQ_PARTIALS_CONTROL][PURP_TONE_SIZE];
-	unsigned char SKIN_TONE_S[COLOR_TUNING_INDEX][PQ_PARTIALS_CONTROL][SKIN_TONE_SIZE];
-	unsigned char GRASS_TONE_S[COLOR_TUNING_INDEX][PQ_PARTIALS_CONTROL][GRASS_TONE_SIZE];
-	unsigned char SKY_TONE_S[COLOR_TUNING_INDEX][PQ_PARTIALS_CONTROL][SKY_TONE_SIZE];
-	unsigned char PURP_TONE_H[COLOR_TUNING_INDEX][PURP_TONE_SIZE];
-	unsigned char SKIN_TONE_H[COLOR_TUNING_INDEX][SKIN_TONE_SIZE];
-	unsigned char GRASS_TONE_H[COLOR_TUNING_INDEX][GRASS_TONE_SIZE];
-	unsigned char SKY_TONE_H[COLOR_TUNING_INDEX][SKY_TONE_SIZE];
+typedef struct {
+
+	unsigned int GLOBAL_SAT[GLOBAL_SAT_SIZE];
+	unsigned int CONTRAST[CONTRAST_SIZE];
+	unsigned int BRIGHTNESS[BRIGHTNESS_SIZE];
+	unsigned int PARTIAL_Y[PARTIAL_Y_INDEX][PARTIAL_Y_SIZE];
+	unsigned int PURP_TONE_S[COLOR_TUNING_INDEX][PQ_PARTIALS_CONTROL][PURP_TONE_SIZE];
+	unsigned int SKIN_TONE_S[COLOR_TUNING_INDEX][PQ_PARTIALS_CONTROL][SKIN_TONE_SIZE];
+	unsigned int GRASS_TONE_S[COLOR_TUNING_INDEX][PQ_PARTIALS_CONTROL][GRASS_TONE_SIZE];
+	unsigned int SKY_TONE_S[COLOR_TUNING_INDEX][PQ_PARTIALS_CONTROL][SKY_TONE_SIZE];
+	unsigned int PURP_TONE_H[COLOR_TUNING_INDEX][PURP_TONE_SIZE];
+	unsigned int SKIN_TONE_H[COLOR_TUNING_INDEX][SKIN_TONE_SIZE];
+	unsigned int GRASS_TONE_H[COLOR_TUNING_INDEX][GRASS_TONE_SIZE];
+	unsigned int SKY_TONE_H[COLOR_TUNING_INDEX][SKY_TONE_SIZE];
+	unsigned int CCORR_COEF[CCORR_COEF_CNT][3][3];
 
 } DISPLAY_PQ_T;
+
+typedef struct {
+	unsigned int GLOBAL_SAT;
+	unsigned int CONTRAST;
+	unsigned int BRIGHTNESS;
+	unsigned int PARTIAL_Y[PARTIAL_Y_SIZE];
+	unsigned int PURP_TONE_S[PQ_PARTIALS_CONTROL][PURP_TONE_SIZE];
+	unsigned int SKIN_TONE_S[PQ_PARTIALS_CONTROL][SKIN_TONE_SIZE];
+	unsigned int GRASS_TONE_S[PQ_PARTIALS_CONTROL][GRASS_TONE_SIZE];
+	unsigned int SKY_TONE_S[PQ_PARTIALS_CONTROL][SKY_TONE_SIZE];
+	unsigned int PURP_TONE_H[PURP_TONE_SIZE];
+	unsigned int SKIN_TONE_H[SKIN_TONE_SIZE];
+	unsigned int GRASS_TONE_H[GRASS_TONE_SIZE];
+	unsigned int SKY_TONE_H[SKY_TONE_SIZE];
+} DISPLAY_COLOR_REG_T;
 
 typedef struct {
 
 	unsigned int entry[THSHP_TUNING_INDEX][THSHP_PARAM_MAX];
 
 } DISPLAY_TDSHP_T;
-
-typedef struct {
-
-	unsigned int entry[DC_TUNING_INDEX][DC_PARAM_MAX];
-
-} DISPLAY_DC_T;
 
 
 typedef enum {
@@ -170,22 +196,12 @@ typedef enum {
 	DCChangeSpeedLevel,
 	ProtectRegionEffect,
 	DCChangeSpeedLevel2,
-	ProtectRegionWeight,
-	DCEnable,
-	DarkSceneTh,
-	DarkSceneSlope,
-	DarkDCGain,
-	DarkACGain,
-	BinomialTh,
-	BinomialSlope,
-	BinomialDCGain,
-	BinomialACGain,
-	BinomialTarRange
+	ProtectRegionWeight
 } PQ_DC_index_t;
 
 typedef struct {
 
-	int param[DC_PARAM_MAX];
+	int param[39];
 	/*
 	   int BlackEffectEnable;
 	   int WhiteEffectEnable;
@@ -226,7 +242,6 @@ typedef struct {
 	   int ProtectRegionEffect;
 	   int DCChangeSpeedLevel2;
 	   int ProtectRegionWeight;
-	   int DCEnable;
 	 */
 } DISP_PQ_DC_PARAM;
 
@@ -309,6 +324,7 @@ typedef enum {
 #define DISP_IOCTL_SET_PQPARAM      _IOW(DISP_IOCTL_MAGIC, 60 , DISP_PQ_PARAM)
 #define DISP_IOCTL_SET_C0_PQPARAM   _IOW(DISP_IOCTL_MAGIC, 60 , DISP_PQ_PARAM)
 #define DISP_IOCTL_GET_PQPARAM      _IOR(DISP_IOCTL_MAGIC, 61 , DISP_PQ_PARAM)
+#define DISP_IOCTL_GET_PQINDEX      _IOR(DISP_IOCTL_MAGIC, 63,  DISPLAY_PQ_T)
 #define DISP_IOCTL_GET_C0_PQPARAM   _IOR(DISP_IOCTL_MAGIC, 61 , DISP_PQ_PARAM)
 #define DISP_IOCTL_SET_C1_PQPARAM   _IOW(DISP_IOCTL_MAGIC, 62 , DISP_PQ_PARAM)
 #define DISP_IOCTL_GET_C1_PQPARAM   _IOR(DISP_IOCTL_MAGIC, 63 , DISP_PQ_PARAM)
@@ -330,12 +346,12 @@ typedef enum {
 #define DISP_IOCTL_WRITE_SW_REG     _IOW(DISP_IOCTL_MAGIC, 77, DISP_WRITE_REG)	/* also defined in atci_pq_cmd.h */
 #define DISP_IOCTL_READ_SW_REG      _IOWR(DISP_IOCTL_MAGIC, 78, DISP_READ_REG)	/* also defined in atci_pq_cmd.h */
 
+#define DISP_IOCTL_SET_COLOR_REG    _IOWR(DISP_IOCTL_MAGIC, 79, DISPLAY_COLOR_REG_T)
+
 /* OD */
 #define DISP_IOCTL_OD_CTL           _IOWR(DISP_IOCTL_MAGIC, 80 , DISP_OD_CMD)
 
+#define DISP_IOCTL_SET_PANEL_PARAM  _IOW(DISP_IOCTL_MAGIC, 81, DISP_PQ_DC_PARAM)
 
 
-/* DC */
-#define DISP_IOCTL_SET_DCINDEX   _IOW(DISP_IOCTL_MAGIC, 100 , DISPLAY_DC_T)
-#define DISP_IOCTL_GET_DCINDEX   _IOR(DISP_IOCTL_MAGIC, 101 , DISPLAY_DC_T)
 #endif

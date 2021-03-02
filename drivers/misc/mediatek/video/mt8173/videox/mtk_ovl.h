@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 
@@ -99,6 +99,5 @@ int ovl2mem_output_config(ovl2mem_out_config *out);
 int ovl2mem_trigger(int blocking, void *callback, unsigned int userdata);
 void ovl2mem_wait_done(void);
 int ovl2mem_deinit(void);
-int ovl2mem_suspend(void);
-int ovl2mem_resume(void);
+
 #endif

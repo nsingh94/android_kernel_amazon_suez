@@ -1,14 +1,15 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #include <generated/autoconf.h>
@@ -68,7 +69,7 @@
 #include "compat_mtkfb.h"
 #include "mtk_ovl.h"
 
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 #include "extd_ddp.h"
 
 static bool factory_mode;
@@ -225,7 +226,7 @@ void mtkfb_set_lcm_inited(bool inited)
 static int mtkfb_open(struct fb_info *info, int user)
 {
 	/*NOT_REFERENCED(info);
-	NOT_REFERENCED(user);*/
+	   NOT_REFERENCED(user); */
 	DISPFUNC();
 	MSG_FUNC_ENTER();
 	MSG_FUNC_LEAVE();
@@ -238,7 +239,7 @@ static int mtkfb_release(struct fb_info *info, int user)
 {
 
 	/*NOT_REFERENCED(info);
-	NOT_REFERENCED(user);*/
+	   NOT_REFERENCED(user); */
 	DISPFUNC();
 
 	MSG_FUNC_ENTER();
@@ -256,7 +257,7 @@ static int mtkfb_setcolreg(u_int regno, u_int red, u_int green,
 	int r = 0;
 	unsigned bpp, m;
 
-	/*NOT_REFERENCED(transp);*/
+	/*NOT_REFERENCED(transp); */
 
 	MSG_FUNC_ENTER();
 
@@ -341,12 +342,9 @@ End:
 int mtkfb_set_backlight_level(unsigned int level)
 {
 	MTKFB_FUNC();
-#if HDMI_SUB_PATH
 	MTKFB_LOG("mtkfb_set_backlight_level:%d Start\n", level);
-#else
 	primary_display_setbacklight(level);
 	MTKFB_LOG("mtkfb_set_backlight_level End\n");
-#endif
 	return 0;
 }
 EXPORT_SYMBOL(mtkfb_set_backlight_level);
@@ -835,7 +833,7 @@ static int mtkfb_pan_display_impl(struct fb_var_screeninfo *var, struct fb_info 
 	ret = primary_display_config_input(&input);
 	ret = primary_display_trigger(true, NULL, 0);
 
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 	MTKFB_LOG("%s ext_disp_config_input\n", __func__);
 	if (factory_mode) {
 		ret = ext_disp_config_input((ext_disp_input_config *) &input);
@@ -1127,7 +1125,11 @@ static int mtkfb_set_par(struct fb_info *fbi)
 	_convert_fb_layer_to_disp_input(&fb_layer, &temp);
 	primary_display_config_input(&temp);
 
-#if HDMI_SUB_PATH
+	/*trigger OVL config update, so layer 0 is enabled, layer 2/3 is disable which is enabled at lk */
+	/*so the font "normal boot" will disapper at here */
+	primary_display_trigger(0, NULL, 0);
+
+#if defined(MTK_ALPS_BOX_SUPPORT)
 	MTKFB_LOG("%s ext_disp_config_input && ext_disp_trigger factory_mode %d\n", __func__,
 		  factory_mode);
 
@@ -1413,7 +1415,6 @@ static int mtkfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg
 			struct fb_overlay_layer layerInfo;
 			primary_disp_input_config input;
 
-			memset((void *)&layerInfo, 0, sizeof(layerInfo));
 			if (copy_from_user(&layerInfo, (void __user *)arg, sizeof(layerInfo))) {
 				MTKFB_ERR("[FB]: copy_from_user failed! line:%d\n", __LINE__);
 				r = -EFAULT;
@@ -1425,13 +1426,11 @@ static int mtkfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg
 				}
 
 				memset((void *)&input, 0, sizeof(primary_disp_input_config));
-				if (0 == _convert_fb_layer_to_disp_input(&layerInfo, &input))
-					primary_display_config_input(&input);
-				else
-					MTKFB_ERR("[FB]: _convert_fb_layer_to_disp_input error, do nothing!\n");
+				_convert_fb_layer_to_disp_input(&layerInfo, &input);
+				primary_display_config_input(&input);
 				primary_display_trigger(1, NULL, 0);
 
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 				MTKFB_LOG("%s MTKFB_SET_OVERLAY_LAYER ext_disp_config_input\n",
 					  __func__);
 				if (factory_mode) {
@@ -1491,7 +1490,7 @@ static int mtkfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg
 					_convert_fb_layer_to_disp_input(&layerInfo[i], &input);
 					primary_display_config_input(&input);
 
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 
 					if (factory_mode) {
 						MTKFB_LOG("%s  ext_disp_config_input\n", __func__);
@@ -1508,7 +1507,7 @@ static int mtkfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg
 
 				primary_display_trigger(1, NULL, 0);
 
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 				if (factory_mode) {
 					MTKFB_LOG("%s ext_disp_trigger\n", __func__);
 					ext_disp_trigger(true, NULL, 0);
@@ -1525,7 +1524,7 @@ static int mtkfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg
 			MTKFB_LOG(" mtkfb_ioctl():MTKFB_TRIG_OVERLAY_OUT\n");
 			MMProfileLog(MTKFB_MMP_Events.TrigOverlayOut, MMProfileFlagPulse);
 			primary_display_trigger(1, NULL, 0);
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 			MTKFB_LOG(" mtkfb_ioctl():MTKFB_TRIG_OVERLAY_OUT\n");
 			if (factory_mode) {
 				DISPMSG("%s ext_disp_trigger\n", __func__);
@@ -1894,6 +1893,9 @@ static int mtkfb_compat_ioctl(struct fb_info *info, unsigned int cmd, unsigned l
 
 static int mtkfb_pan_display_proxy(struct fb_var_screeninfo *var, struct fb_info *info)
 {
+#ifdef CONFIG_MTPROF_APPLAUNCH	/* eng enable, user disable */
+	LOG_PRINT(ANDROID_LOG_INFO, "AppLaunch", "mtkfb_pan_display_proxy.\n");
+#endif
 	return mtkfb_pan_display_impl(var, info);
 }
 
@@ -1910,14 +1912,12 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 	case FB_BLANK_UNBLANK:
 	case FB_BLANK_NORMAL:
 		mtkfb_blank_resume();
-		if (!lcd_fps)
-			msleep(30);
-		else
-			msleep(2 * 100000 / lcd_fps);	/* Delay 2 frames. */
 	#ifdef CONFIG_MTK_LEDS
+	#ifdef CONFIG_MTK_KERNEL_POWER_OFF_CHARGING
 		if (get_boot_mode() == KERNEL_POWER_OFF_CHARGING_BOOT ||
 			get_boot_mode() == LOW_POWER_OFF_CHARGING_BOOT)
 			mt65xx_leds_brightness_set(6, 255);
+	#endif
 	#endif
 		break;
 	case FB_BLANK_VSYNC_SUSPEND:
@@ -1925,9 +1925,11 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 		break;
 	case FB_BLANK_POWERDOWN:
 	#ifdef CONFIG_MTK_LEDS
+	#ifdef CONFIG_MTK_KERNEL_POWER_OFF_CHARGING
 		if (get_boot_mode() == KERNEL_POWER_OFF_CHARGING_BOOT ||
 			get_boot_mode() == LOW_POWER_OFF_CHARGING_BOOT)
 			mt65xx_leds_brightness_set(6, 0);
+	#endif
 	#endif
 		mtkfb_blank_suspend();
 		break;
@@ -2574,11 +2576,63 @@ static int update_test_kthread(void *data)
 
 bool boot_up_with_facotry_mode(void)
 {
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 	return factory_mode;
 #else
 	return 0;
 #endif
+}
+
+
+static ssize_t fb_get_panel_info(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	/* struct fb_info *fbi = dev_get_drvdata(dev); */
+	int ret = 0;
+
+	ret = scnprintf(buf, PAGE_SIZE,
+		"panel_name=%s\n", mtkfb_lcm_name);
+
+	return ret;
+}
+
+static ssize_t fb_set_dispparam(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int param;
+	sscanf(buf, "0x%x", &param);
+
+	MTKFB_FUNC();
+	MTKFB_LOG("fb_set_dispparam:%d Start\n", param);
+	primary_display_set_panel_param(param);
+	MTKFB_LOG("fb_set_dispparam End\n");
+
+	return size;
+}
+
+static DEVICE_ATTR(fb_panel_info, S_IRUGO, fb_get_panel_info, NULL);
+static DEVICE_ATTR(fb_dispparam, 0644, NULL, fb_set_dispparam);
+
+static struct attribute *fb_attrs[] = {
+
+	&dev_attr_fb_panel_info.attr,
+	&dev_attr_fb_dispparam.attr,
+
+	NULL,
+};
+
+static struct attribute_group fb_attr_group = {
+	.attrs = fb_attrs,
+};
+
+static int fb_create_sysfs(struct fb_info *fbi)
+{
+	int rc;
+
+	rc = sysfs_create_group(&fbi->dev->kobj, &fb_attr_group);
+	if (rc)
+		pr_err("sysfs group creation failed, rc=%d\n", rc);
+	return rc;
 }
 
 static int mtkfb_probe(struct platform_device *pdev)
@@ -2589,16 +2643,13 @@ static int mtkfb_probe(struct platform_device *pdev)
 	int r = 0;
 	int i = 0;
 	int bug_idx = -1;
-#if HDMI_MAIN_PATH
-#else
 	struct device_node *larb_node[2];
 	struct platform_device *larb_pdev[2];
-#endif
+
 	DISPFUNC();
 
 	MTKFB_MSG("mtkfb_probe start\n");
-#if HDMI_MAIN_PATH
-#else
+
 	larb_node[0] = of_parse_phandle(pdev->dev.of_node, "mediatek,larb", 0);
 	if (!larb_node[0])
 		return -EINVAL;
@@ -2617,7 +2668,7 @@ static int mtkfb_probe(struct platform_device *pdev)
 		MTKFB_ERR("mtkfb_probe is earlier than SMI\n");
 		return -EPROBE_DEFER;
 	}
-#endif
+
 	if (get_boot_mode() == META_BOOT || get_boot_mode() == FACTORY_BOOT
 	    || get_boot_mode() == ADVMETA_BOOT || get_boot_mode() == RECOVERY_BOOT)
 		first_update = false;
@@ -2682,6 +2733,7 @@ static int mtkfb_probe(struct platform_device *pdev)
 		fbdev->fb_pa_base = res->start;
 #endif
 	}
+
 #ifdef CONFIG_OF
 	for (i = 0; i < MM_CLK_NUM; i++) {
 		ddp_clk_map[i] = devm_clk_get(&pdev->dev, ddp_get_clk_name(i));
@@ -2702,7 +2754,7 @@ static int mtkfb_probe(struct platform_device *pdev)
 						 (unsigned long)fb_pa);
 	primary_display_init(pdev, mtkfb_find_lcm_driver(), lcd_fps);
 
-#if HDMI_SUB_PATH
+#if defined(MTK_ALPS_BOX_SUPPORT)
 	{
 		int tmp_boot_mode;
 
@@ -2805,6 +2857,8 @@ static int mtkfb_probe(struct platform_device *pdev)
 
 	fbdev->state = MTKFB_ACTIVE;
 	MTKFB_MSG("mtkfb_probe done\n");
+
+	fb_create_sysfs(fbi);
 
 #ifdef PAN_DISPLAY_TEST
 	{
@@ -2952,8 +3006,6 @@ static void mtkfb_blank_suspend(void)
 #endif
 	msleep(30);
 
-	ovl2mem_suspend();
-
 	ret = primary_display_suspend();
 	if (ret < 0) {
 		MTKFB_ERR("primary display suspend failed\n");
@@ -3018,7 +3070,6 @@ static void mtkfb_blank_resume(void)
 		return;
 	}
 
-	ovl2mem_resume();
 	MSG_FUNC_LEAVE();
 	MTKFB_MSG("leave late_resume\n");
 }

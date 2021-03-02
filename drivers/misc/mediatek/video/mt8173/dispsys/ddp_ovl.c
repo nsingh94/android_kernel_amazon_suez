@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #define LOG_TAG "OVL"
@@ -65,7 +65,6 @@ struct OVL_REG {
 
 static int reg_back_cnt[OVL_NUM];
 static struct OVL_REG reg_back[OVL_NUM][OVL_REG_BACK_MAX];
-extern bool g_secure_flag;
 
 static enum OVL_INPUT_FORMAT ovl_input_fmt_convert(DpColorFormat fmt)
 {
@@ -405,7 +404,7 @@ int ovl_layer_switch(DISP_MODULE_ENUM module, unsigned layer, unsigned int en, v
 	case 0:
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
 		/* for CMDQ TZ to determine whether shelter HDMI secure video layer by HDCP status */
-		if ((handle != 0) && (idx == 1) && en && sec) {
+		if ((handle != 0) && (idx == 1) && en && sec && !ovl2mem_is_alive()) {
 			cmdqRecWriteSecureMask(handle,
 					       ddp_addr_convert_va2pa(idx_off_site +
 								      DISP_REG_OVL_SRC_CON),
@@ -694,7 +693,7 @@ int ovl_init(DISP_MODULE_ENUM module, void *handle)
 	int idx = ovl_index(module);
 
 	ddp_module_clock_enable(MM_CLK_DISP_OVL0 + idx, true);
-	DDPMSG("olv%d_init open CG 0x%x\n", idx, DISP_REG_GET(DISP_REG_CONFIG_MMSYS_CG_CON0));
+	DDPDBG("olv%d_init open CG 0x%x\n", idx, DISP_REG_GET(DISP_REG_CONFIG_MMSYS_CG_CON0));
 	return 0;
 }
 
@@ -826,11 +825,11 @@ static int ovl_config_l(DISP_MODULE_ENUM module, disp_ddp_path_config *pConfig, 
 
 	/* warm reset ovl every time we use it */
 	if (handle) {
-		if (ovl_check_should_reset(module)) {
-			unsigned int offset;
+		unsigned int offset;
 
+		offset = ovl_index(module) * DISP_OVL_INDEX_OFFSET;
+		if (ovl_check_should_reset(module)) {
 			DDPDBG("warm reset ovl%d every time we use it\n", ovl_index(module));
-			offset = ovl_index(module) * DISP_OVL_INDEX_OFFSET;
 			DISP_REG_SET(handle, DISP_REG_OVL_RST + offset, 0x1);
 			DISP_REG_SET(handle, DISP_REG_OVL_RST + offset, 0x0);
 			cmdqRecPoll(handle, disp_addr_convert(DISP_REG_OVL_STA + offset), 0, 0x1);
@@ -871,7 +870,6 @@ static int ovl_config_l(DISP_MODULE_ENUM module, disp_ddp_path_config *pConfig, 
 		/* cmdqRecSecureEnableDAPC(handle, (1LL << cmdq_engine)); */
 		if (ovl_is_sec[ovl_idx] == 0) {
 			DDPMSG("[SVP] switch ovl%d to sec\n", ovl_idx);
-			g_secure_flag = true;
 #ifdef CONFIG_MTK_HDMI_SUPPORT
 			g_wdma_rdma_security = DISP_SECURE_BUFFER;
 #endif
@@ -968,7 +966,6 @@ static int ovl_config_l(DISP_MODULE_ENUM module, disp_ddp_path_config *pConfig, 
 				cmdqRecFlush(nonsec_switch_handle);
 			cmdqRecDestroy(nonsec_switch_handle);
 			DDPMSG("[SVP] switch ovl%d to nonsec\n", ovl_idx);
-			g_secure_flag = false;
 #ifdef CONFIG_MTK_HDMI_SUPPORT
 			g_wdma_rdma_security = DISP_NORMAL_BUFFER;
 #endif

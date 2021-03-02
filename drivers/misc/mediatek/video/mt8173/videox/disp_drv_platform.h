@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #ifndef __DISP_DRV_PLATFORM_H__
@@ -31,6 +31,10 @@
 #include "../dispsys/ddp_rdma.h"
 
 #include <mt-plat/sync_write.h>
+
+#ifdef CONFIG_MTK_TC8_TABLET_RELEASE_ONLY
+#define MTK_DISP_IDLE_LP
+#endif
 
 #define MTKFB_NO_M4U
 /* #define MTK_LCD_HW_3D_SUPPORT */
@@ -67,27 +71,12 @@
 #define DISP_SESSION_TIMELINE_COUNT			(DISP_SESSION_OUTPUT_INTERFACE_TIMELINE_ID+1)	/* 6 for ROME */
 #define MAX_SESSION_COUNT					5
 /* #define DISP_SWITCH_DST_MODE */
-#if defined(MTK_ALPS_BOX_SUPPORT)
-#define HDMI_MAIN_PATH (1)
-#define MAIN_PATH_DISABLE_LCM (0)
-#define HDMI_SUB_PATH (0)
-#define HDMI_SUB_PATH_PROB (0)
-#define HDMI_SUB_PATH_PROB_V2 (0)
-#define HDMI_SUB_PATH_RECORD (0)
-#define HDMI_SUB_PATH_PRESENT_FENCE_SUPPORT (0)
-#define RELEASE_PRESENT_FENCE_WITH_IRQ_HANDLE (1)
-#define HDMI_SUB_PATH_BOOT (0)
-#else
 #define HDMI_MAIN_PATH (0)
 #define MAIN_PATH_DISABLE_LCM (0)
-#define HDMI_SUB_PATH (0)
-#define HDMI_SUB_PATH_PROB (0)
 #define HDMI_SUB_PATH_PROB_V2 (0)
 #define HDMI_SUB_PATH_RECORD (0)
-#define HDMI_SUB_PATH_PRESENT_FENCE_SUPPORT (0)
 #define RELEASE_PRESENT_FENCE_WITH_IRQ_HANDLE (1)
 #define HDMI_SUB_PATH_BOOT (0)
-#endif
 
 /*for MTK_HDMI_MAIN_PATH*/
 extern unsigned int ddp_dbg_level;

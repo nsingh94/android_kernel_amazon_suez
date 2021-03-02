@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #ifndef __DISP_SESSION_H
@@ -22,7 +22,6 @@
 
 #define MAX_INPUT_CONFIG		4
 #define MAKE_DISP_FORMAT_ID(id, bpp)  (((id) << 8) | (bpp))
-#define GET_DISP_FORMAT_ID(fmt) ((fmt) >> 8)
 #define DISP_SESSION_MODE(id) (((id)>>24)&0xff)
 #define DISP_SESSION_TYPE(id) (((id)>>16)&0xff)
 #define DISP_SESSION_DEV(id) ((id)&0xff)
@@ -307,6 +306,16 @@ typedef struct disp_caps_t {
 	unsigned int max_layer_num;
 } disp_caps_info;
 
+
+enum DISP_SCENARIO {
+	DISP_SCENARIO_NORMAL,
+	DISP_SCENARIO_SELF_REFRESH,
+};
+struct disp_scenario_config_t {
+	unsigned int session_id;
+	unsigned int scenario;
+};
+
 /* IOCTL commands. */
 #define DISP_IOW(num, dtype)     _IOW('O', num, dtype)
 #define DISP_IOR(num, dtype)     _IOR('O', num, dtype)
@@ -332,5 +341,7 @@ typedef struct disp_caps_t {
 #define	DISP_IOCTL_SET_MAX_LAYER_NUM			DISP_IOW(214, disp_session_layer_num_config)
 #define	DISP_IOCTL_SET_VSYNC_FPS				DISP_IOW(215, unsigned int)
 #define	DISP_IOCTL_GET_PRESENT_FENCE			DISP_IOW(216, disp_present_fence)
+
+#define	DISP_IOCTL_SET_SCENARIO				DISP_IOW(222, struct disp_scenario_config_t)
 
 #endif				/* __DISP_SESSION_H */

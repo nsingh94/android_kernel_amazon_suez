@@ -1,14 +1,15 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #ifndef _DISP_LCM_H_
@@ -41,10 +42,9 @@ LCM_INTERFACE_ID disp_lcm_get_interface_id(disp_lcm_handle *plcm);
 int disp_lcm_update(disp_lcm_handle *plcm, int x, int y, int w, int h, int force);
 int disp_lcm_esd_check(disp_lcm_handle *plcm);
 int disp_lcm_esd_recover(disp_lcm_handle *plcm);
-int disp_lcm_suspend_power(disp_lcm_handle *plcm);
 int disp_lcm_suspend(disp_lcm_handle *plcm);
-int disp_lcm_resume_power(disp_lcm_handle *plcm);
 int disp_lcm_resume(disp_lcm_handle *plcm);
+int disp_lcm_resume_power(disp_lcm_handle *plcm);
 int disp_lcm_set_backlight(disp_lcm_handle *plcm, int level);
 int disp_lcm_set_backlight_mode(disp_lcm_handle *plcm, int mode);
 int disp_lcm_read_fb(disp_lcm_handle *plcm);
@@ -53,5 +53,6 @@ int disp_lcm_is_video_mode(disp_lcm_handle *plcm);
 int disp_lcm_is_inited(disp_lcm_handle *plcm);
 unsigned int disp_lcm_ATA(disp_lcm_handle *plcm);
 void *disp_lcm_switch_mode(disp_lcm_handle *plcm, int mode);
+int disp_lcm_set_param(disp_lcm_handle *plcm, unsigned int param);
 
 #endif
