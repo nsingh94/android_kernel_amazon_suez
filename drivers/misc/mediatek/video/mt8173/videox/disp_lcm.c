@@ -944,28 +944,3 @@ int disp_lcm_is_video_mode(disp_lcm_handle *plcm)
 
 	ASSERT(0);
 }
-
-int disp_lcm_set_param(disp_lcm_handle *plcm, unsigned int param)
-{
-	/*DISPFUNC(); */
-	LCM_DRIVER *lcm_drv = NULL;
-	int ret = 0;
-
-	DISPFUNC();
-
-	if (_is_lcm_inited(plcm)) {
-		lcm_drv = plcm->drv;
-		if (lcm_drv->set_disp_param) {
-			lcm_drv->set_disp_param(param);
-			ret = 0;
-		} else {
-			DISPERR("FATAL ERROR, lcm_drv->set_backlight is null\n");
-			ret = -1;
-		}
-	} else {
-		DISPERR("lcm_drv is null\n");
-		ret = -1;
-	}
-
-	return ret;
-}

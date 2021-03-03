@@ -2583,58 +2583,6 @@ bool boot_up_with_facotry_mode(void)
 #endif
 }
 
-
-static ssize_t fb_get_panel_info(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	/* struct fb_info *fbi = dev_get_drvdata(dev); */
-	int ret = 0;
-
-	ret = scnprintf(buf, PAGE_SIZE,
-		"panel_name=%s\n", mtkfb_lcm_name);
-
-	return ret;
-}
-
-static ssize_t fb_set_dispparam(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	int param;
-	sscanf(buf, "0x%x", &param);
-
-	MTKFB_FUNC();
-	MTKFB_LOG("fb_set_dispparam:%d Start\n", param);
-	primary_display_set_panel_param(param);
-	MTKFB_LOG("fb_set_dispparam End\n");
-
-	return size;
-}
-
-static DEVICE_ATTR(fb_panel_info, S_IRUGO, fb_get_panel_info, NULL);
-static DEVICE_ATTR(fb_dispparam, 0644, NULL, fb_set_dispparam);
-
-static struct attribute *fb_attrs[] = {
-
-	&dev_attr_fb_panel_info.attr,
-	&dev_attr_fb_dispparam.attr,
-
-	NULL,
-};
-
-static struct attribute_group fb_attr_group = {
-	.attrs = fb_attrs,
-};
-
-static int fb_create_sysfs(struct fb_info *fbi)
-{
-	int rc;
-
-	rc = sysfs_create_group(&fbi->dev->kobj, &fb_attr_group);
-	if (rc)
-		pr_err("sysfs group creation failed, rc=%d\n", rc);
-	return rc;
-}
-
 static int mtkfb_probe(struct platform_device *pdev)
 {
 	struct mtkfb_device *fbdev = NULL;
@@ -2857,8 +2805,6 @@ static int mtkfb_probe(struct platform_device *pdev)
 
 	fbdev->state = MTKFB_ACTIVE;
 	MTKFB_MSG("mtkfb_probe done\n");
-
-	fb_create_sysfs(fbi);
 
 #ifdef PAN_DISPLAY_TEST
 	{

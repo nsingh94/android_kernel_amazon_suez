@@ -1286,13 +1286,6 @@ int dpmgr_path_user_cmd(disp_path_handle dp_handle, int msg, unsigned long arg, 
 			}
 			break;
 		}
-	case DISP_IOCTL_SET_PANEL_PARAM:
-		{
-
-			primary_display_set_panel_param(arg);
-
-			break;
-		}
 	default:
 		{
 			DISP_LOG_W("dpmgr_path_user_cmd io not supported\n");
