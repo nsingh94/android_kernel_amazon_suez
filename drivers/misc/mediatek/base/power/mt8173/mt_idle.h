@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2015 MediaTek Inc.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 #ifndef _MT_IDLE_H
@@ -179,23 +179,23 @@ enum cg_clk_id {
 	MT_CG_MFG_G3D			= 194,
 	MT_CG_MFG_26M			= 195,
 
-	MT_CG_AUDIO_AFE			= 224,
-	MT_CG_AUDIO_I2S			= 228,
-	MT_CG_AUDIO_22M			= 230,
-	MT_CG_AUDIO_24M			= 231,
-	MT_CG_AUDIO_SPDF2		= 233,
-	MT_CG_AUDIO_APLL2_TUNER		= 240,
-	MT_CG_AUDIO_APLL_TUNER		= 241,
-	MT_CG_AUDIO_HDMI		= 242,
-	MT_CG_AUDIO_SPDF		= 243,
-	MT_CG_AUDIO_ADDA3		= 244,
-	MT_CG_AUDIO_ADDA2		= 245,
-	MT_CG_AUDIO_ADC			= 246,
-	MT_CG_AUDIO_DAC			= 247,
-	MT_CG_AUDIO_DAC_PREDIS		= 248,
-	MT_CG_AUDIO_TML			= 249,
-	MT_CG_AUDIO_IDLE_EN_EXT		= 251,
-	MT_CG_AUDIO_IDLE_EN_INT		= 252,
+	MT_CG_AUDIO_AFE			= 226,
+	MT_CG_AUDIO_I2S			= 230,
+	MT_CG_AUDIO_22M			= 232,
+	MT_CG_AUDIO_24M			= 233,
+	MT_CG_AUDIO_SPDF2		= 235,
+	MT_CG_AUDIO_APLL2_TUNER		= 242,
+	MT_CG_AUDIO_APLL_TUNER		= 243,
+	MT_CG_AUDIO_HDMI		= 244,
+	MT_CG_AUDIO_SPDF		= 245,
+	MT_CG_AUDIO_ADDA3		= 246,
+	MT_CG_AUDIO_ADDA2		= 247,
+	MT_CG_AUDIO_ADC			= 248,
+	MT_CG_AUDIO_DAC			= 249,
+	MT_CG_AUDIO_DAC_PREDIS		= 250,
+	MT_CG_AUDIO_TML			= 251,
+	MT_CG_AUDIO_IDLE_EN_EXT		= 253,
+	MT_CG_AUDIO_IDLE_EN_INT		= 254,
 
 	MT_CG_VDEC0_VDEC		= 256,
 	MT_CG_VDEC1_LARB		= 288,
