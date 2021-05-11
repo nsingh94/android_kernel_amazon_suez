@@ -258,6 +258,7 @@ int fbconfig_get_esd_check_test(uint32_t dsi_id, uint32_t cmd, uint8_t *buffer, 
 int primary_display_pause(PRIMARY_DISPLAY_CALLBACK callback, unsigned int user_data);
 int primary_display_switch_dst_mode(int mode);
 int rdma2_config_input(RDMA_CONFIG_STRUCT *config);
+int primary_display_set_panel_param(unsigned int param);
 
 void primary_display_update_present_fence(unsigned int fence_idx);
 unsigned int _need_wait_esd_eof(void);

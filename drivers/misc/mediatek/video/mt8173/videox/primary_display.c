@@ -6230,3 +6230,40 @@ done:
 #endif
 	return ret;
 }
+
+int primary_display_set_panel_param(unsigned int param)
+{
+	int ret = DISP_STATUS_OK;
+
+	DISPFUNC();
+	MMProfileLogEx(ddp_mmp_get_events()->dsi_wrlcm, MMProfileFlagStart, 0, 0);
+#ifdef DISP_SWITCH_DST_MODE
+	_primary_path_switch_dst_lock();
+#endif
+	_primary_path_lock(__func__);
+	if (pgc->state == DISP_SLEPT) {
+		DISPCHECK("Sleep State set display parameter invald\n");
+	} else {
+		if (primary_display_cmdq_enabled()) {
+			if (primary_display_is_video_mode()) {
+				MMProfileLogEx(ddp_mmp_get_events()->dsi_wrlcm,
+					       MMProfileFlagPulse, 0, 7);
+				disp_lcm_set_param(pgc->plcm, param);
+			} else {
+				DISPCHECK("NOT video mode\n");
+				/* _set_backlight_by_cmdq(param); */
+			}
+		} else {
+			DISPCHECK("display cmdq NOT enabled\n");
+			/* _set_backlight_by_cpu(level); */
+		}
+	}
+	_primary_path_unlock(__func__);
+#ifdef DISP_SWITCH_DST_MODE
+	_primary_path_switch_dst_lock();
+#endif
+	MMProfileLogEx(ddp_mmp_get_events()->dsi_wrlcm, MMProfileFlagEnd, 0, 0);
+
+	return ret;
+}
+
