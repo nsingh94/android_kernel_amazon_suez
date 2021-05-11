@@ -1,16 +1,3 @@
-#
-# Copyright (C) 2015 MediaTek Inc.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 2 as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-
 # drivers/video/mtk/Makefile
 #
 #
@@ -35,10 +22,10 @@ subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmp/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/video/$(MTK_PLATFORM)/dispsys   \
              -I$(srctree)/drivers/misc/mediatek/sync/      \
              -I$(srctree)/drivers/misc/mediatek/m4u/       \
-             -I$(srctree)/drivers/misc/mediatek/cmdq/v2/      \
+             -I$(srctree)/drivers/misc/mediatek/cmdq/hv1/      \
              -I$(srctree)/drivers/misc/mediatek/base/power/$(MTK_PLATFORM) \
              -I$(srctree)/drivers/misc/mediatek/m4u/$(MTK_PLATFORM)       \
-             -I$(srctree)/drivers/misc/mediatek/cmdq/v2/$(MTK_PLATFORM)      \
+             -I$(srctree)/drivers/misc/mediatek/cmdq/hv1/$(MTK_PLATFORM)      \
              -I$(srctree)/drivers/misc/mediatek/lcm/inc/      \
              -I$(srctree)/drivers/misc/mediatek/ext_disp/$(MTK_PLATFORM) \
              -I$(srctree)/drivers/staging/android/ion/
@@ -69,5 +56,5 @@ endif
 ifeq ($(CONFIG_MTK_ALPS_BOX_SUPPORT), y)
 ccflags-y += -DMTK_ALPS_BOX_SUPPORT
 else
-#ccflags-y += -DMTK_DISP_IDLE_LP
+ccflags-y += -DMTK_DISP_IDLE_LP
 endif

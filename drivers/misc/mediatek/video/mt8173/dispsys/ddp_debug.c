@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #define LOG_TAG "DEBUG"
@@ -41,7 +41,9 @@
 #include "ddp_hal.h"
 #include "ddp_path.h"
 #include "ddp_aal.h"
+#include "ddp_color.h"
 #include "ddp_pwm.h"
+#include "ddp_gamma.h"
 #include "ddp_info.h"
 #include "ddp_dsi.h"
 #include "ddp_ovl.h"
@@ -85,11 +87,7 @@ unsigned int gUltraEnable = 1;
 unsigned int gDumpMemoutCmdq = 0;
 unsigned int gEnableUnderflowAEE = 0;
 
-#ifdef CONFIG_MTK_TC8_TABLET_RELEASE_ONLY
-unsigned int disp_low_power_reduse_fps = 1;
-#else
 unsigned int disp_low_power_reduse_fps = 0;
-#endif
 unsigned int disp_low_power_reduse_clock = 0;
 unsigned int disp_low_power_adjust_vfp = 0;
 unsigned int disp_low_power_disable_ddp_clock = 1;
@@ -172,11 +170,8 @@ static char STR_HELP[] =
 "       echo [ACTION]>/d/dispsys\n"
 "ACTION:\n"
 "       regr:addr                :regr:va\n"
-"       regw:addr,value          :regw:va 0x1\n"
 "       regr_pa:addr             :regr_pa:0x1400c000\n"
-"       regw_pa:addr,value       :regw_pa:0x1400c000,0x1\n"
 "       g_regr:addr              :g_regr:0x1400c000\n"
-"       g_regw:addr,value        :g_regw:0x1400c000,0x1\n"
 "       dbg_log:0|1|2            :0 off, 1 dbg, 2 all\n"
 "       irq_log:0|1              :0 off, !0 on\n"
 "       met_on:[0|1] [0|1] [0|1] :fist[0|1]on|off,other [0|1]direct|decouple\n"
@@ -534,36 +529,6 @@ static void process_dbg_opt(const char *opt)
 			sprintf(buf, "regr, invalid address 0x%lx\n", addr);
 			goto Error;
 		}
-	} else if (0 == strncmp(opt, "regw:", 5)) {
-		char *p = (char *)opt + 5;
-		unsigned long addr = 0;
-		unsigned long val = 0;
-		char *tmp;
-
-		tmp = strsep(&p, ",");
-		ret = kstrtoul(tmp, 16, (unsigned long int *)&addr);
-		if (ret) {
-			DDPERR("DISP/%s: line:%d errno %d\n", __func__, __LINE__, ret);
-			goto Error;
-		}
-		tmp = strsep(&p, " ");
-		ret = kstrtoul(tmp, 16, (unsigned long int *)&val);
-		if (ret) {
-			DDPERR("DISP/%s: line:%d errno %d\n", __func__, __LINE__, ret);
-			goto Error;
-		}
-
-		if (is_reg_addr_valid(1, addr) == 1) {
-			unsigned int regVal;
-
-			DISP_CPU_REG_SET(addr, val);
-			regVal = DISP_REG_GET(addr);
-			DDPMSG("regw: 0x%lx, 0x%08lx = 0x%08x\n", addr, val, regVal);
-			sprintf(buf, "regw: 0x%lx, 0x%08lx = 0x%08x\n", addr, val, regVal);
-		} else {
-			sprintf(buf, "regw, invalid address 0x%lx\n", addr);
-			goto Error;
-		}
 	} else if (0 == strncmp(opt, "regr_pa:", 8)) {
 		char *p = (char *)opt + 8;
 		unsigned long addr_pa = 0;
@@ -583,38 +548,6 @@ static void process_dbg_opt(const char *opt)
 			sprintf(buf, "regr_pa: 0x%08lx = 0x%08x\n", addr_pa, regVal);
 		} else {
 			sprintf(buf, "regr_pa, invalid pa address 0x%08lx\n", addr_pa);
-			goto Error;
-		}
-	} else if (0 == strncmp(opt, "regw_pa:", 8)) {
-		char *p = (char *)opt + 8;
-		unsigned long addr_pa = 0;
-		unsigned long addr_va = 0;
-		unsigned long val = 0;
-		char *tmp;
-
-		tmp = strsep(&p, ",");
-		ret = kstrtoul(tmp, 16, (unsigned long int *)&addr_pa);
-		if (ret) {
-			DDPERR("DISP/%s: line:%d errno %d\n", __func__, __LINE__, ret);
-			goto Error;
-		}
-		tmp = strsep(&p, " ");
-		ret = kstrtoul(tmp, 16, (unsigned long int *)&val);
-		if (ret) {
-			DDPERR("DISP/%s: line:%d errno %d\n", __func__, __LINE__, ret);
-			goto Error;
-		}
-
-		addr_va = ddp_addr_convert_pa2va(addr_pa);
-		if (addr_va != 0) {
-			unsigned int regVal;
-
-			DISP_CPU_REG_SET(addr_va, val);
-			regVal = DISP_REG_GET(addr_va);
-			DDPMSG("regw_pa: 0x%08lx, 0x%08lx = 0x%08x\n", addr_pa, val, regVal);
-			sprintf(buf, "regw_pa: 0x%08lx, 0x%08lx = 0x%08x\n", addr_pa, val, regVal);
-		} else {
-			sprintf(buf, "regw_pa, invalid address 0x%08lx\n", addr_pa);
 			goto Error;
 		}
 	} else if (0 == strncmp(opt, "rdma_ultra:", 11)) {
@@ -661,42 +594,6 @@ static void process_dbg_opt(const char *opt)
 			       reg_pa, reg_va, reg_va_before);
 			sprintf(buf, "g_regr, pa=%lx, va=0x%lx, reg_val=0x%x\n",
 				reg_pa, reg_va, reg_va_before);
-
-			iounmap((void *)reg_va);
-		}
-	} else if (0 == strncmp(opt, "g_regw:", 7)) {
-		char *p = (char *)opt + 7;
-		unsigned int reg_va_before = 0;
-		unsigned int reg_va_after = 0;
-		unsigned int val = 0;
-		unsigned long reg_va = 0;
-		unsigned long reg_pa = 0;
-		char *tmp;
-
-		p = (char *)opt + 7;
-		tmp = strsep(&p, ",");
-		ret = kstrtoul(tmp, 16, (unsigned long int *)&reg_pa);
-		if (ret) {
-			DDPERR("DISP/%s: line:%d errno %d\n", __func__, __LINE__, ret);
-			goto Error;
-		}
-
-		if (reg_pa < 0x10000000 || reg_pa > 0x18000000) {
-			sprintf(buf, "g_regw, invalid pa=0x%lx\n", reg_pa);
-		} else {
-			tmp = strsep(&p, " ");
-			ret = kstrtouint(tmp, 0, &val);
-			reg_va = (unsigned long)ioremap_nocache(reg_pa, sizeof(unsigned long));
-			reg_va_before = DISP_REG_GET(reg_va);
-			DISP_CPU_REG_SET(reg_va, val);
-			reg_va_after = DISP_REG_GET(reg_va);
-
-			DDPMSG
-			    ("g_regw, pa=%lx, va=0x%lx, value=0x%x, reg_val_before=0x%x, reg_val_after=0x%x\n",
-			     reg_pa, reg_va, val, reg_va_before, reg_va_after);
-			sprintf(buf,
-				"g_regw, pa=%lx, va=0x%lx, value=0x%x, reg_val_before=0x%x, reg_val_after=0x%x\n",
-				reg_pa, reg_va, val, reg_va_before, reg_va_after);
 
 			iounmap((void *)reg_va);
 		}
@@ -795,6 +692,12 @@ static void process_dbg_opt(const char *opt)
 		} else {
 			goto Error;
 		}
+	} else if (0 == strncmp(opt, "pwm_test:", 9)) {
+		char *p = (char *)opt + 9;
+
+		DDPMSG("[PWM_DEBUG] pwm_test:%s", p);
+
+		pwm_test(p, buf);
 	} else if (0 == strncmp(opt, "aal_dbg:", 8)) {
 		char *p = (char *)opt + 8;
 
@@ -804,6 +707,30 @@ static void process_dbg_opt(const char *opt)
 			goto Error;
 		}
 		sprintf(buf, "aal_dbg_en = 0x%x\n", aal_dbg_en);
+	} else if (0 == strncmp(opt, "aal_test:", 9)) {
+		char *p = (char *)opt + 9;
+
+		DDPMSG("[AAL_DEBUG] aal_test:%s", p);
+
+		aal_test(p, buf);
+	} else if (0 == strncmp(opt, "color_test:", 11)) {
+		char *p = (char *)opt + 11;
+
+		DDPMSG("[COLOR_DEBUG] color_test:%s", p);
+
+		color_test(p, buf);
+	} else if (0 == strncmp(opt, "gamma_test:", 11)) {
+		char *p = (char *)opt + 11;
+
+		DDPMSG("[GAMMA_DEBUG] gamma_test:%s", p);
+
+		gamma_test(p, buf);
+	} else if (0 == strncmp(opt, "ccorr_test:", 11)) {
+		char *p = (char *)opt + 11;
+
+		DDPMSG("[CCORR_DEBUG] ccorr_test:%s", p);
+
+		ccorr_test(p, buf);
 	} else if (0 == strncmp(opt, "dump_module:", 12)) {
 		char *p = (char *)opt + 12;
 		char *dst;
@@ -927,6 +854,8 @@ static void process_dbg_opt(const char *opt)
 	} else if (0 == strncmp(opt, "mmp", 3)) {
 		init_ddp_mmp_events();
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
+	} else if (0 == strncmp(opt, "m4u", 3)) {
+		m4u_dump_info(0);
 	} else if (0 == strncmp(opt, "svp:", 4)) {
 		char *p = (char *)opt + 4;
 		unsigned int session = 0;
@@ -1082,6 +1011,10 @@ unsigned int ddp_debug_irq_log_level(void)
 	return irq_log_level;
 }
 
+void ddp_debug_set_irq_log_level(unsigned int loglevel)
+{
+	irq_log_level = loglevel;
+}
 
 void ddp_debug_exit(void)
 {

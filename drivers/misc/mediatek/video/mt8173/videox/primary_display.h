@@ -1,15 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2018 XiaoMi, Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef _PRIMARY_DISPLAY_H_
@@ -258,7 +257,6 @@ int fbconfig_get_esd_check_test(uint32_t dsi_id, uint32_t cmd, uint8_t *buffer, 
 int primary_display_pause(PRIMARY_DISPLAY_CALLBACK callback, unsigned int user_data);
 int primary_display_switch_dst_mode(int mode);
 int rdma2_config_input(RDMA_CONFIG_STRUCT *config);
-int primary_display_set_panel_param(unsigned int param);
 
 void primary_display_update_present_fence(unsigned int fence_idx);
 unsigned int _need_wait_esd_eof(void);
@@ -279,5 +277,4 @@ void disp_clear_current_fb_buffer(void);
 #include <misc/board_id.h>
 extern unsigned int idme_get_board_type(void);
 extern unsigned int idme_get_board_rev(void);
-
 #endif

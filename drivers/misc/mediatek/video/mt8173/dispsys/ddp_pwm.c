@@ -1,15 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2018 XiaoMi, Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include <linux/kernel.h>
@@ -231,10 +230,6 @@ int disp_pwm_set_backlight(disp_pwm_id_t id, int level_1024)
 	if (ret >= 0)
 		disp_pwm_trigger_refresh(id);
 
-#ifdef CONFIG_BACKLIGHT_LP855X
-	lp855x_set_backlight_level(level_1024);
-#endif
-
 	return 0;
 }
 
@@ -359,3 +354,48 @@ DDP_MODULE_DRIVER ddp_driver_pwm = {
 	.power_off = ddp_pwm_power_off,
 	.set_listener = ddp_pwm_set_listener,
 };
+
+void pwm_test(const char *cmd, char *debug_output)
+{
+	int ret;
+	unsigned long reg_base;
+	disp_pwm_id_t pwm_id;
+
+	debug_output[0] = '\0';
+	PWM_MSG("pwm_test:%s", cmd);
+
+	if (strncmp(cmd, "PWM0:", 5) == 0) {
+		pwm_id = DISP_PWM0;
+	} else if (strncmp(cmd, "PWM1:", 5) == 0) {
+		pwm_id = DISP_PWM1;
+	} else {
+		memcpy(debug_output, "Wrong PWM ID\n", 13);
+		return;
+	}
+	cmd += 5;
+
+	reg_base = pwm_get_reg_base(pwm_id);
+
+	if (strncmp(cmd, "query_status", 12) == 0) {
+		ret = DISP_REG_GET(reg_base + DISP_PWM_EN_OFF);
+		if (ret & 0x1)
+			memcpy(debug_output, "Enabled\n", 8);
+		else
+			memcpy(debug_output, "Disabled\n", 9);
+	} else if (strncmp(cmd, "en:", 3) == 0) {
+		int enable;
+
+		cmd += 3;
+
+		enable = cmd[0] - '0';
+		DISP_REG_SET(NULL, reg_base + DISP_PWM_EN_OFF, enable);
+
+		ret = DISP_REG_GET(reg_base + DISP_PWM_EN_OFF);
+		if ((ret & 0x1) == enable)
+			memcpy(debug_output, "Success\n", 8);
+		else
+			memcpy(debug_output, "Fail\n", 5);
+	} else {
+		memcpy(debug_output, "Command not support\n", 20);
+	}
+}

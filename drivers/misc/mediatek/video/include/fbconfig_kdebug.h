@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef __FBCONFIG_KDEBUG_H
@@ -21,11 +21,7 @@ void PanelMaster_Init(void);
 void PanelMaster_Deinit(void);
 int fb_config_execute_cmd(void);
 int fbconfig_get_esd_check_exec(void);
-#if defined(CONFIG_ARCH_MT8167)
-extern int m4u_query_mva_info(unsigned int mva, unsigned int size,
-				  unsigned int *real_mva,
-				  unsigned int *real_size);
-#endif
+
 #ifndef TOTAL_OVL_LAYER_NUM
 #define TOTAL_OVL_LAYER_NUM OVL_LAYER_NUM
 #endif
@@ -111,6 +107,13 @@ typedef struct ESD_PARA {
 	int para_num;
 	char *esd_ret_buffer;
 } ESD_PARA;
+#if 0
+typedef struct LAYER_H_SIZE {
+	int layer_size;
+	int height;
+	int fmt;
+} LAYER_H_SIZE;
+#endif
 typedef struct MIPI_CLK_V2 {
 	unsigned char div1;
 	unsigned char div2;
@@ -118,8 +121,8 @@ typedef struct MIPI_CLK_V2 {
 } MIPI_CLK_V2;
 
 typedef struct LCM_TYPE_FB {
-	unsigned int clock;
-	unsigned int lcm_type;
+	int clock;
+	int lcm_type;
 } LCM_TYPE_FB;
 
 typedef struct DSI_RET {

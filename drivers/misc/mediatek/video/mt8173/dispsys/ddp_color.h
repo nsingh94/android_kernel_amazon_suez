@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef __DDP_COLOR_H__
@@ -115,7 +115,16 @@ enum {
 #define SWREG_PQDC_PROTECT_REGION_EFFECT    (DISP_COLOR_SWREG_PQDC_BASE + ProtectRegionEffect)
 #define SWREG_PQDC_DC_CHANGE_SPEED_LEVEL2   (DISP_COLOR_SWREG_PQDC_BASE + DCChangeSpeedLevel2)
 #define SWREG_PQDC_PROTECT_REGION_WEIGHT    (DISP_COLOR_SWREG_PQDC_BASE + ProtectRegionWeight)
-
+#define SWREG_PQDC_DC_ENABLE                (DISP_COLOR_SWREG_PQDC_BASE + DCEnable)
+#define SWREG_PQDC_DARK_SCENE_TH            (DISP_COLOR_SWREG_PQDC_BASE + DarkSceneTh)
+#define SWREG_PQDC_DARK_SCENE_SLOPE         (DISP_COLOR_SWREG_PQDC_BASE + DarkSceneSlope)
+#define SWREG_PQDC_DARK_DC_GAIN             (DISP_COLOR_SWREG_PQDC_BASE + DarkDCGain)
+#define SWREG_PQDC_DARK_AC_GAIN             (DISP_COLOR_SWREG_PQDC_BASE + DarkACGain)
+#define SWREG_PQDC_BINOMIAL_TH              (DISP_COLOR_SWREG_PQDC_BASE + BinomialTh)
+#define SWREG_PQDC_BINOMIAL_SLOPE           (DISP_COLOR_SWREG_PQDC_BASE + BinomialSlope)
+#define SWREG_PQDC_BINOMIAL_DC_GAIN         (DISP_COLOR_SWREG_PQDC_BASE + BinomialDCGain)
+#define SWREG_PQDC_BINOMIAL_AC_GAIN         (DISP_COLOR_SWREG_PQDC_BASE + BinomialACGain)
+#define SWREG_PQDC_BINOMIAL_TAR_RANGE       (DISP_COLOR_SWREG_PQDC_BASE + BinomialTarRange)
 
 
 /* --------------------------------------------------------------------------- */
@@ -132,4 +141,5 @@ extern DISPLAY_TDSHP_T *get_TDSHP_index(void);
 void disp_color_set_window(unsigned int sat_upper, unsigned int sat_lower,
 			   unsigned int hue_upper, unsigned int hue_lower);
 
+void color_test(const char *cmd, char *debug_output);
 #endif

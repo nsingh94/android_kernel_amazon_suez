@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef __DDP_PWM_H__
@@ -21,7 +21,12 @@ typedef enum {
 	DISP_PWM_ALL = (DISP_PWM0 | DISP_PWM1)
 } disp_pwm_id_t;
 
-void disp_pwm_set_force_update_flag(void);
+typedef enum {
+	CLK26M = 0,
+	UNIVPLL_104M,
+	OSC_104M,
+	OSC_26M,
+} DISP_PWM_CLK_FREQ;
 
 void disp_pwm_set_main(disp_pwm_id_t main);
 disp_pwm_id_t disp_pwm_get_main(void);
@@ -41,7 +46,6 @@ int disp_bls_set_backlight(int level_1024) { return 0; }
 #else
 int disp_bls_set_backlight(int level_1024);
 #endif
-bool disp_pwm_is_osc(void);
 void disp_pwm_test(const char *cmd, char *debug_output);
 
 #endif

@@ -1,15 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2018 XiaoMi, Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include <linux/sched.h>
@@ -21,6 +20,7 @@
 #include <linux/uaccess.h>
 #include <linux/atomic.h>
 /*#include <linux/leds-mt65xx.h> */
+#include "leds_drv.h"
 #include <linux/string.h>
 #include "cmdq_record.h"
 #include "ddp_reg.h"
@@ -31,7 +31,6 @@
 #include "ddp_gamma.h"
 #include "ddp_log.h"
 #include <primary_display.h>
-#include "leds_drv.h"
 
 
 /* To enable debug log: */
@@ -57,6 +56,7 @@ static ddp_module_notify g_ddp_notify;
 static volatile int g_aal_hist_available;
 static volatile int g_aal_dirty_frame_retrieved = 1;
 static volatile int g_aal_is_init_regs_valid;
+/* extern int backlight_brightness_set(int level); *//* for kernel 3.18 bring up */
 
 static int disp_aal_init(DISP_MODULE_ENUM module, int width, int height, void *cmdq)
 {
@@ -157,6 +157,7 @@ void disp_aal_on_end_of_frame(void)
 
 			for (i = 0; i < AAL_HIST_BIN; i++)
 				g_aal_hist.maxHist[i] = DISP_REG_GET(DISP_AAL_STATUS_00 + (i << 2));
+			g_aal_hist.colorHist = DISP_REG_GET(DISP_COLOR_TWO_D_W1_RESULT);
 			g_aal_hist_available = 1;
 
 			/* Allow to disable interrupt */
@@ -209,7 +210,7 @@ void disp_aal_notify_backlight_changed(int bl_1024)
 		service_flags = AAL_SERVICE_FORCE_UPDATE;
 	} else if (!g_aal_is_init_regs_valid) {
 		/* AAL Service is not running */
-		DDPDBG("aal service is not running\n");
+		DDPMSG("aal service is not running\n");
 		backlight_brightness_set(bl_1024);
 	}
 
@@ -318,13 +319,8 @@ int disp_aal_set_param(DISP_AAL_PARAM __user *param, void *cmdq)
 	/* Not need to protect g_aal_param, since only AALService
 	   can set AAL parameters. */
 	if (copy_from_user(&g_aal_param, param, sizeof(DISP_AAL_PARAM)) == 0) {
-		backlight_value = g_aal_param.FinalBacklight;
-#ifdef CONFIG_MTK_AAL_SUPPORT
-		/* set cabc gain zero when detect backlight setting equal to zero */
-		if (backlight_value == 0)
-			g_aal_param.cabc_fltgain_force = 0;
-#endif
 		ret = disp_aal_write_param_to_reg(cmdq, &g_aal_param);
+		backlight_value = g_aal_param.FinalBacklight;
 	}
 
 	if (ret == 0)
@@ -334,7 +330,7 @@ int disp_aal_set_param(DISP_AAL_PARAM __user *param, void *cmdq)
 		g_aal_param.cabc_fltgain_force, g_aal_param.DREGainFltStatus[0],
 		g_aal_param.DREGainFltStatus[8], ret);
 
-	backlight_brightness_set(backlight_value);
+	/*backlight_brightness_set(backlight_value); *//*workaround comment for kernel 3.18 bring up */
 
 	disp_aal_trigger_refresh();
 
@@ -605,18 +601,32 @@ static void aal_test_ink(const char *cmd)
 
 void aal_test(const char *cmd, char *debug_output)
 {
+	int ret;
+
 	debug_output[0] = '\0';
 	AAL_TLOG("aal_test(%s)", cmd);
 
 	if (strncmp(cmd, "en:", 3) == 0) {
 		aal_test_en(cmd + 3);
+		memcpy(debug_output, "Success\n", 8);
 	} else if (strncmp(cmd, "histogram", 5) == 0) {
 		aal_dump_histogram();
+		memcpy(debug_output, "Success\n", 8);
 	} else if (strncmp(cmd, "ink:", 4) == 0) {
 		aal_test_ink(cmd + 4);
+		memcpy(debug_output, "Success\n", 8);
 	} else if (strncmp(cmd, "bypass:", 7) == 0) {
 		int bypass = (cmd[7] == '1');
 
 		aal_bypass(DISP_MODULE_AAL, bypass);
+		memcpy(debug_output, "Success\n", 8);
+	} else if (strncmp(cmd, "query_status", 12) == 0) {
+		ret = DISP_REG_GET(DISP_AAL_EN);
+		if (ret & 0x1)
+			memcpy(debug_output, "Enabled\n", 8);
+		else
+			memcpy(debug_output, "Disabled\n", 9);
+	} else {
+		memcpy(debug_output, "Command not support\n", 20);
 	}
 }

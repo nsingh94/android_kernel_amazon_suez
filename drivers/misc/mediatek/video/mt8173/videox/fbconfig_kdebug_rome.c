@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  *
- * This program is free software: you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #include <linux/string.h>
@@ -61,6 +61,7 @@ bool fbconfig_start_LCM_config;
 #define LCM_GET_ID     FBCONFIG_IOR(45, unsigned int)
 #define LCM_GET_ESD    FBCONFIG_IOWR(46, unsigned int)
 #define DRIVER_IC_CONFIG    FBCONFIG_IOR(47, unsigned int)
+#define DRIVER_IC_CONFIG_DONE  FBCONFIG_IO(0)
 #define DRIVER_IC_RESET    FBCONFIG_IOR(48, unsigned int)
 
 
@@ -90,7 +91,7 @@ bool fbconfig_start_LCM_config;
 
 
 #define DP_COLOR_BITS_PER_PIXEL(color)    ((0x0003FF00 & color) >>  8)
-static int global_layer_id = -1;
+//static unsigned int global_layer_id;
 
 struct dentry *ConfigPara_dbgfs = NULL;
 CONFIG_RECORD_LIST head_list;
@@ -116,6 +117,7 @@ static PM_TOOL_T pm_params = {
 	.pLcm_params = NULL,
 	.pLcm_drv = NULL,
 };
+struct mutex fb_config_lock;
 
 static void *pm_get_handle(void)
 {
@@ -228,6 +230,7 @@ static int fbconfig_open(struct inode *inode, struct file *file)
 	PM_TOOL_T *pm_params;
 
 	file->private_data = inode->i_private;
+	mutex_init(&fb_config_lock);
 	pm_params = (PM_TOOL_T *) pm_get_handle();
 	PanelMaster_set_PM_enable(1);
 	pm_params->pLcm_drv = DISP_GetLcmDrv();
@@ -315,7 +318,19 @@ static long fbconfig_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 				record_tmp_list = NULL;
 				return -EFAULT;
 			}
+			mutex_lock(&fb_config_lock);
 			list_add(&record_tmp_list->list, &head_list.list);
+			mutex_unlock(&fb_config_lock);
+			return 0;
+		}
+	case DRIVER_IC_CONFIG_DONE:
+		{
+			/* while all DRIVER_IC_CONFIG is added, use this to set complete */
+			mutex_lock(&fb_config_lock);
+			Panel_Master_dsi_config_entry("PM_DDIC_CONFIG", NULL);
+			/* free the memory ..... */
+			free_list_memory();
+			mutex_unlock(&fb_config_lock);
 			return 0;
 		}
 	case MIPI_SET_CC:
@@ -450,7 +465,10 @@ static long fbconfig_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 				       __LINE__);
 				return -EFAULT;
 			}
-			global_layer_id = layer_info.index;
+			if (layer_info.index >= OVL_LAYER_NUM) {
+				pr_debug("===> is 000 Errorrrr!!\n");
+				return -2;
+			}
 			ovl_get_info(0, ovl_all);
 			layer_info.height = ovl_all[layer_info.index].src_h;
 			layer_info.width = ovl_all[layer_info.index].src_w;
@@ -461,7 +479,7 @@ static long fbconfig_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 			       layer_info.height);
 			DISPMSG("===>: width:%d src_pitch:%d\n", layer_info.width,
 			       ovl_all[layer_info.index].src_pitch);
-			DISPMSG("===>: layer_id:%d fmt:%d\n", global_layer_id, layer_info.fmt);
+			DISPMSG("===>: layer_id:%d fmt:%d\n", layer_info.index, layer_info.fmt);
 			DISPMSG("===>: layer_en:%d\n", (ovl_all[layer_info.index].layer_en));
 			if ((layer_info.height == 0) || (layer_info.width == 0)
 			    || (ovl_all[layer_info.index].layer_en == 0)) {
