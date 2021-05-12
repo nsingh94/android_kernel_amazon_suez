@@ -253,8 +253,11 @@ PVRSRVConnectKM(CONNECTION_DATA *psConnection,
 				IMG_UINT32 *ui32CapabilityFlags)
 {
 	PVRSRV_ERROR		eError = PVRSRV_OK;
+//#define WTF_AMAZON
+#ifndef WTF_AMAZON
 	IMG_UINT32			ui32BuildOptions, ui32BuildOptionsMismatch;
 	IMG_UINT32			ui32DDKVersion, ui32DDKBuild;
+#endif
 	PVRSRV_DATA			*psSRVData = NULL;
 	static IMG_BOOL		bIsFirstConnection=IMG_FALSE;
 
@@ -379,6 +382,7 @@ PVRSRVConnectKM(CONNECTION_DATA *psConnection,
 		PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_RUNNING, IMG_TRUE);
 #endif
 	}
+#ifndef WTF_AMAZON
 	else
 	{
 		if(PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RAN))
@@ -409,8 +413,9 @@ PVRSRVConnectKM(CONNECTION_DATA *psConnection,
 			}
 		}
 	}
+#endif
 #endif /* defined(SUPPORT_KERNEL_SRVINIT) */
-
+#ifndef WTF_AMAZON
 	ui32DDKVersion = PVRVERSION_PACK(PVRVERSION_MAJ, PVRVERSION_MIN);
 	ui32DDKBuild = PVRVERSION_BUILD;
 
@@ -566,7 +571,7 @@ PVRSRVConnectKM(CONNECTION_DATA *psConnection,
 		eError = PVRSRV_ERROR_INVALID_PARAMS;
 #endif
 	}
-
+#endif
 chk_exit:
 	return eError;
 }

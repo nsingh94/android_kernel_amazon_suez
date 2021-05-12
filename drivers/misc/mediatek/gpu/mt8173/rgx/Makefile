@@ -12,8 +12,7 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/met/$(MTK_PLATFORM)/platform/$(MTK_PLATFORM)/
 
-
-VER := $(if $(filter eng,$(TARGET_BUILD_VARIANT)),eng,user)
+VER := user
 
 #MTK_DDK_DEBUG := y
 
